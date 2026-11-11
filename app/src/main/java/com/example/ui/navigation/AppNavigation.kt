@@ -4,13 +4,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.CloudUpload
-import androidx.compose.material.icons.filled.Description
-import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Subtitles
 import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
@@ -57,14 +52,9 @@ fun AppNavigation(viewModel: StudioViewModel) {
 
     val navItems = listOf(
         BottomNavItem(Screen.Dashboard, Icons.Default.Home, "Studio"),
-        BottomNavItem(Screen.Upload, Icons.Default.CloudUpload, "Upload"),
         BottomNavItem(Screen.Generator, Icons.Default.AutoAwesome, "AI Script"),
         BottomNavItem(Screen.Editor, Icons.Default.VideoLibrary, "Editor"),
-        BottomNavItem(Screen.Transcription, Icons.Default.Mic, "Audio"),
-        BottomNavItem(Screen.Subtitles, Icons.Default.Subtitles, "SRT"),
-        BottomNavItem(Screen.Export, Icons.Default.Download, "Export"),
-        BottomNavItem(Screen.Settings, Icons.Default.Settings, "API"),
-        BottomNavItem(Screen.Docs, Icons.Default.Description, "Docs")
+        BottomNavItem(Screen.Settings, Icons.Default.Settings, "Settings")
     )
 
     Scaffold(
@@ -99,7 +89,8 @@ fun AppNavigation(viewModel: StudioViewModel) {
                         label = {
                             Text(
                                 text = item.label,
-                                fontSize = 10.sp,
+                                fontSize = 11.sp,
+                                fontWeight = if (selected) androidx.compose.ui.text.font.FontWeight.Bold else androidx.compose.ui.text.font.FontWeight.Normal,
                                 color = if (selected) MetallicGold else TextMuted
                             )
                         },

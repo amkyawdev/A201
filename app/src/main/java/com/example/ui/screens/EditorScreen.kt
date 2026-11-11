@@ -19,17 +19,23 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AudioFile
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material.icons.filled.Subtitles
 import androidx.compose.material.icons.filled.Upload
+import androidx.compose.material.icons.filled.VideoFile
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -41,12 +47,15 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -59,8 +68,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -75,6 +86,7 @@ import com.example.ui.theme.ElectricViolet
 import com.example.ui.theme.ElectricVioletGlow
 import com.example.ui.theme.MetallicGold
 import com.example.ui.theme.MetallicGoldGlow
+import com.example.ui.theme.SuccessGreen
 import com.example.ui.theme.TextMuted
 import com.example.ui.theme.TextPrimary
 import com.example.ui.theme.TextSecondary
@@ -87,23 +99,40 @@ fun EditorScreen(
     onNavigateToExport: () -> Unit,
     onNavigateToSubtitles: () -> Unit
 ) {
-    val project by viewModel.activeProject.collectAsStateWithLifecycle()
+    val projectState by viewModel.activeProject.collectAsStateWithLifecycle()
+    val project = projectState ?: remember { viewModel.ensureActiveProject() }
+    val subtitles by viewModel.subtitles.collectAsStateWithLifecycle()
+    val exportProgress by viewModel.exportProgress.collectAsStateWithLifecycle()
+
     val context = LocalContext.current
+    val clipboardManager = LocalClipboardManager.current
+
+    var selectedTab by remember { mutableIntStateOf(0) } // 0: Video, 1: Voice, 2: Captions, 3: Export
 
     var isPlaying by remember { mutableStateOf(false) }
     var currentPositionSec by remember { mutableIntStateOf(0) }
 
-    var selectedAspectRatio by remember { mutableStateOf(project?.aspectRatio ?: "9:16") }
-    var narrationVolume by remember { mutableFloatStateOf(project?.narrationVolume ?: 1.0f) }
-    var bgmVolume by remember { mutableFloatStateOf(project?.bgmVolume ?: 0.3f) }
-    var watermarkText by remember { mutableStateOf(project?.watermarkText ?: "Movie Recap Studio") }
+    var selectedAspectRatio by remember { mutableStateOf(project.aspectRatio) }
+    var narrationVolume by remember { mutableFloatStateOf(project.narrationVolume) }
+    var bgmVolume by remember { mutableFloatStateOf(project.bgmVolume) }
+    var watermarkText by remember { mutableStateOf(project.watermarkText) }
 
-    var selectedVoiceId by remember { mutableStateOf(project?.selectedVoiceId ?: "my_aung_cinematic") }
-    var speechRate by remember { mutableFloatStateOf(project?.speechRate ?: 1.0f) }
-    var speechPitch by remember { mutableFloatStateOf(project?.speechPitch ?: 1.0f) }
-    var customVoiceUri by remember { mutableStateOf(project?.customVoiceUri) }
+    var selectedVoiceId by remember { mutableStateOf(project.selectedVoiceId) }
+    var speechRate by remember { mutableFloatStateOf(project.speechRate) }
+    var speechPitch by remember { mutableFloatStateOf(project.speechPitch) }
+    var customVoiceUri by remember { mutableStateOf(project.customVoiceUri) }
 
     var voiceExpanded by remember { mutableStateOf(false) }
+
+    // Subtitle form state
+    var newBurmese by remember { mutableStateOf("") }
+    var newEnglish by remember { mutableStateOf("") }
+    var startMsText by remember { mutableStateOf("0") }
+    var endMsText by remember { mutableStateOf("4000") }
+
+    // Export quality state
+    var selectedResolution by remember { mutableStateOf("1080p") }
+    var selectedFps by remember { mutableIntStateOf(30) }
 
     val audioPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
@@ -114,10 +143,27 @@ fun EditorScreen(
                 selectedAspectRatio, narrationVolume, bgmVolume, watermarkText,
                 selectedVoiceId, speechRate, speechPitch, uri.toString()
             )
-            Toast.makeText(context, "Voiceover file loaded!", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "Custom Voiceover Loaded!", Toast.LENGTH_SHORT).show()
         }
     }
 
+    val srtPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            try {
+                val content = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
+                if (!content.isNullOrBlank()) {
+                    viewModel.importSubtitlesFromSrtContent(content)
+                    Toast.makeText(context, "Subtitles Imported!", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                Toast.makeText(context, "Failed to read subtitle file", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    val tabTitles = listOf("🎬 Timeline & Video", "🎙️ Voice & Audio", "💬 Captions & SRT", "🚀 Render & Export")
     val aspectRatios = listOf("9:16", "16:9", "1:1")
 
     Column(
@@ -126,9 +172,32 @@ fun EditorScreen(
             .background(DarkCharcoal)
     ) {
         HeaderBar(
-            title = project?.title ?: "Multi-Track Studio Editor",
-            subtitle = "Video Trimming • Burmese Voice Selector • Audio Mixer"
+            title = project.title,
+            subtitle = "Genre: ${project.genre} • Aspect: ${selectedAspectRatio} • Duration: ${project.targetDurationSeconds}s"
         )
+
+        // Clean Segmented Studio Sub-Tabs
+        ScrollableTabRow(
+            selectedTabIndex = selectedTab,
+            containerColor = CardCharcoal,
+            contentColor = MetallicGold,
+            edgePadding = 12.dp
+        ) {
+            tabTitles.forEachIndexed { index, title ->
+                Tab(
+                    selected = selectedTab == index,
+                    onClick = { selectedTab = index },
+                    text = {
+                        Text(
+                            text = title,
+                            fontSize = 12.sp,
+                            fontWeight = if (selectedTab == index) FontWeight.Bold else FontWeight.Normal,
+                            color = if (selectedTab == index) MetallicGold else TextMuted
+                        )
+                    }
+                )
+            }
+        }
 
         LazyColumn(
             modifier = Modifier
@@ -136,388 +205,487 @@ fun EditorScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Video Preview Canvas Box
-            item {
-                GlassmorphicCard(
-                    glowColor = ElectricVioletGlow,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        val aspectMultiplier = when (selectedAspectRatio) {
-                            "16:9" -> 16f / 9f
-                            "1:1" -> 1f
-                            else -> 9f / 16f
-                        }
-
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth(if (selectedAspectRatio == "9:16") 0.65f else 1f)
-                                .aspectRatio(aspectMultiplier)
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(CardCharcoal)
-                                .border(1.dp, MetallicGold, RoundedCornerShape(12.dp)),
-                            contentAlignment = Alignment.Center
+            when (selectedTab) {
+                // Tab 0: Video & Timeline
+                0 -> {
+                    item {
+                        GlassmorphicCard(
+                            glowColor = ElectricVioletGlow,
+                            modifier = Modifier.fillMaxWidth()
                         ) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Icon(
-                                    imageVector = Icons.Default.Movie,
-                                    contentDescription = null,
-                                    tint = ElectricViolet,
-                                    modifier = Modifier.size(48.dp)
-                                )
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Text(
-                                    text = project?.title ?: "No Active Video",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = TextPrimary,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Text(
-                                    text = "Previewing $selectedAspectRatio Mode",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = TextMuted
-                                )
-                            }
+                                val aspectMultiplier = when (selectedAspectRatio) {
+                                    "16:9" -> 16f / 9f
+                                    "1:1" -> 1f
+                                    else -> 9f / 16f
+                                }
 
-                            if (watermarkText.isNotBlank()) {
                                 Box(
                                     modifier = Modifier
-                                        .align(Alignment.BottomEnd)
-                                        .padding(8.dp)
-                                        .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(4.dp))
-                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                        .fillMaxWidth(if (selectedAspectRatio == "9:16") 0.65f else 1f)
+                                        .aspectRatio(aspectMultiplier)
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(CardCharcoal)
+                                        .border(1.dp, MetallicGold, RoundedCornerShape(12.dp)),
+                                    contentAlignment = Alignment.Center
                                 ) {
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Icon(
+                                            imageVector = Icons.Default.Movie,
+                                            contentDescription = null,
+                                            tint = ElectricViolet,
+                                            modifier = Modifier.size(48.dp)
+                                        )
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        Text(
+                                            text = project.title,
+                                            style = MaterialTheme.typography.titleMedium,
+                                            color = TextPrimary,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        Text(
+                                            text = "Previewing $selectedAspectRatio Mode",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = TextMuted
+                                        )
+                                    }
+
+                                    if (watermarkText.isNotBlank()) {
+                                        Box(
+                                            modifier = Modifier
+                                                .align(Alignment.BottomEnd)
+                                                .padding(8.dp)
+                                                .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(4.dp))
+                                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                                        ) {
+                                            Text(
+                                                text = watermarkText,
+                                                color = MetallicGold,
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(12.dp))
+
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    IconButton(
+                                        onClick = { isPlaying = !isPlaying },
+                                        modifier = Modifier
+                                            .size(48.dp)
+                                            .clip(CircleShape)
+                                            .background(ElectricViolet)
+                                            .testTag("play_pause_button")
+                                    ) {
+                                        Icon(
+                                            imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                                            contentDescription = "Play/Pause",
+                                            tint = TextPrimary
+                                        )
+                                    }
+
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "Timecode: ${currentPositionSec}s / ${project.targetDurationSeconds}s",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = TextSecondary
+                                        )
+                                        Slider(
+                                            value = currentPositionSec.toFloat(),
+                                            onValueChange = { currentPositionSec = it.toInt() },
+                                            valueRange = 0f..project.targetDurationSeconds.toFloat(),
+                                            colors = SliderDefaults.colors(
+                                                thumbColor = MetallicGold,
+                                                activeTrackColor = ElectricViolet
+                                            )
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    item {
+                        MultiTrackTimelineView(
+                            totalDurationSeconds = project.targetDurationSeconds,
+                            currentPositionSeconds = currentPositionSec,
+                            onSeek = { currentPositionSec = it }
+                        )
+                    }
+
+                    item {
+                        GlassmorphicCard(modifier = Modifier.fillMaxWidth()) {
+                            Column {
+                                Text(text = "Aspect Ratio Format:", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    aspectRatios.forEach { ar ->
+                                        FilterChip(
+                                            selected = selectedAspectRatio == ar,
+                                            onClick = {
+                                                selectedAspectRatio = ar
+                                                viewModel.updateProjectSettings(
+                                                    ar, narrationVolume, bgmVolume, watermarkText,
+                                                    selectedVoiceId, speechRate, speechPitch, customVoiceUri
+                                                )
+                                            },
+                                            label = { Text(ar, fontSize = 12.sp) },
+                                            colors = FilterChipDefaults.filterChipColors(selectedContainerColor = ElectricViolet)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Tab 1: Voice & Audio
+                1 -> {
+                    item {
+                        GlassmorphicCard(
+                            glowColor = MetallicGoldGlow,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.RecordVoiceOver, contentDescription = null, tint = MetallicGold)
+                                    Spacer(modifier = Modifier.width(8.dp))
                                     Text(
-                                        text = watermarkText,
+                                        text = "BURMESE & ENGLISH TTS VOICE SELECTOR",
+                                        style = MaterialTheme.typography.bodySmall,
                                         color = MetallicGold,
-                                        fontSize = 10.sp,
                                         fontWeight = FontWeight.Bold
                                     )
                                 }
-                            }
-                        }
 
-                        Spacer(modifier = Modifier.height(12.dp))
+                                Spacer(modifier = Modifier.height(12.dp))
 
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            IconButton(
-                                onClick = { isPlaying = !isPlaying },
-                                modifier = Modifier
-                                    .size(48.dp)
-                                    .clip(CircleShape)
-                                    .background(ElectricViolet)
-                                    .testTag("play_pause_button")
-                            ) {
-                                Icon(
-                                    imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                                    contentDescription = "Play/Pause",
-                                    tint = TextPrimary
-                                )
-                            }
+                                ExposedDropdownMenuBox(
+                                    expanded = voiceExpanded,
+                                    onExpandedChange = { voiceExpanded = !voiceExpanded }
+                                ) {
+                                    val selectedVoice = VoicePresets.ALL_VOICES.find { it.id == selectedVoiceId }
+                                        ?: VoicePresets.ALL_VOICES.first()
 
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = "Timecode: ${currentPositionSec}s / ${project?.targetDurationSeconds ?: 180}s",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = TextSecondary
-                                )
-                                Slider(
-                                    value = currentPositionSec.toFloat(),
-                                    onValueChange = { currentPositionSec = it.toInt() },
-                                    valueRange = 0f..(project?.targetDurationSeconds?.toFloat() ?: 180f),
-                                    colors = SliderDefaults.colors(
-                                        thumbColor = MetallicGold,
-                                        activeTrackColor = ElectricViolet
+                                    OutlinedTextField(
+                                        value = "${selectedVoice.name} (${selectedVoice.languageName})",
+                                        onValueChange = {},
+                                        readOnly = true,
+                                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = voiceExpanded) },
+                                        modifier = Modifier
+                                            .menuAnchor()
+                                            .fillMaxWidth(),
+                                        colors = OutlinedTextFieldDefaults.colors(
+                                            focusedBorderColor = ElectricViolet,
+                                            unfocusedBorderColor = CardCharcoal,
+                                            focusedTextColor = TextPrimary,
+                                            unfocusedTextColor = TextPrimary
+                                        )
                                     )
-                                )
-                            }
-                        }
-                    }
-                }
-            }
 
-            // Visual Multi-Track Timeline
-            item {
-                MultiTrackTimelineView(
-                    totalDurationSeconds = project?.targetDurationSeconds ?: 180,
-                    currentPositionSeconds = currentPositionSec,
-                    onSeek = { currentPositionSec = it }
-                )
-            }
-
-            // Voice Selector & Speech Controls
-            item {
-                GlassmorphicCard(
-                    glowColor = MetallicGoldGlow,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.RecordVoiceOver, contentDescription = null, tint = MetallicGold)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = "NARRATION VOICE & TTS SELECTOR",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MetallicGold,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        ExposedDropdownMenuBox(
-                            expanded = voiceExpanded,
-                            onExpandedChange = { voiceExpanded = !voiceExpanded }
-                        ) {
-                            val selectedVoice = VoicePresets.ALL_VOICES.find { it.id == selectedVoiceId }
-                                ?: VoicePresets.ALL_VOICES.first()
-
-                            OutlinedTextField(
-                                value = "${selectedVoice.name} (${selectedVoice.languageName})",
-                                onValueChange = {},
-                                readOnly = true,
-                                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = voiceExpanded) },
-                                modifier = Modifier
-                                    .menuAnchor()
-                                    .fillMaxWidth(),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = ElectricViolet,
-                                    unfocusedBorderColor = CardCharcoal,
-                                    focusedTextColor = TextPrimary,
-                                    unfocusedTextColor = TextPrimary
-                                )
-                            )
-
-                            ExposedDropdownMenu(
-                                expanded = voiceExpanded,
-                                onDismissRequest = { voiceExpanded = false },
-                                modifier = Modifier.background(CardCharcoal)
-                            ) {
-                                VoicePresets.ALL_VOICES.forEach { voice ->
-                                    DropdownMenuItem(
-                                        text = {
-                                            Column {
-                                                Text(text = "${voice.name} • ${voice.gender}", color = TextPrimary, fontWeight = FontWeight.Bold)
-                                                Text(text = "${voice.languageName} • ${voice.description}", color = TextSecondary, fontSize = 11.sp)
-                                            }
-                                        },
-                                        onClick = {
-                                            selectedVoiceId = voice.id
-                                            voiceExpanded = false
-                                            viewModel.updateProjectSettings(
-                                                selectedAspectRatio, narrationVolume, bgmVolume, watermarkText,
-                                                voice.id, speechRate, speechPitch, customVoiceUri
+                                    ExposedDropdownMenu(
+                                        expanded = voiceExpanded,
+                                        onDismissRequest = { voiceExpanded = false },
+                                        modifier = Modifier.background(CardCharcoal)
+                                    ) {
+                                        VoicePresets.ALL_VOICES.forEach { voice ->
+                                            DropdownMenuItem(
+                                                text = {
+                                                    Column {
+                                                        Text(text = "${voice.name} • ${voice.gender}", color = TextPrimary, fontWeight = FontWeight.Bold)
+                                                        Text(text = "${voice.languageName} • ${voice.description}", color = TextSecondary, fontSize = 11.sp)
+                                                    }
+                                                },
+                                                onClick = {
+                                                    selectedVoiceId = voice.id
+                                                    voiceExpanded = false
+                                                    viewModel.updateProjectSettings(
+                                                        selectedAspectRatio, narrationVolume, bgmVolume, watermarkText,
+                                                        voice.id, speechRate, speechPitch, customVoiceUri
+                                                    )
+                                                }
                                             )
                                         }
-                                    )
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(12.dp))
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "Speed: ${String.format("%.1f", speechRate)}x",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = TextSecondary
+                                        )
+                                        Slider(
+                                            value = speechRate,
+                                            onValueChange = {
+                                                speechRate = it
+                                                viewModel.updateProjectSettings(
+                                                    selectedAspectRatio, narrationVolume, bgmVolume, watermarkText,
+                                                    selectedVoiceId, it, speechPitch, customVoiceUri
+                                                )
+                                            },
+                                            valueRange = 0.5f..2.0f,
+                                            colors = SliderDefaults.colors(thumbColor = MetallicGold)
+                                        )
+                                    }
+
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "Pitch: ${String.format("%.1f", speechPitch)}x",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = TextSecondary
+                                        )
+                                        Slider(
+                                            value = speechPitch,
+                                            onValueChange = {
+                                                speechPitch = it
+                                                viewModel.updateProjectSettings(
+                                                    selectedAspectRatio, narrationVolume, bgmVolume, watermarkText,
+                                                    selectedVoiceId, speechRate, it, customVoiceUri
+                                                )
+                                            },
+                                            valueRange = 0.5f..1.5f,
+                                            colors = SliderDefaults.colors(thumbColor = ElectricViolet)
+                                        )
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                OutlinedButton(
+                                    onClick = { audioPicker.launch("audio/*") },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = MetallicGold)
+                                ) {
+                                    Icon(Icons.Default.Upload, contentDescription = null)
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(if (customVoiceUri != null) "Change External Voice File" else "Upload Custom Voice File (.mp3 / .wav)")
                                 }
                             }
                         }
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = "Speed: ${String.format("%.1f", speechRate)}x",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = TextSecondary
-                                )
-                                Slider(
-                                    value = speechRate,
-                                    onValueChange = {
-                                        speechRate = it
-                                        viewModel.updateProjectSettings(
-                                            selectedAspectRatio, narrationVolume, bgmVolume, watermarkText,
-                                            selectedVoiceId, it, speechPitch, customVoiceUri
-                                        )
-                                    },
-                                    valueRange = 0.5f..2.0f,
-                                    colors = SliderDefaults.colors(thumbColor = MetallicGold)
-                                )
-                            }
-
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = "Pitch: ${String.format("%.1f", speechPitch)}x",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = TextSecondary
-                                )
-                                Slider(
-                                    value = speechPitch,
-                                    onValueChange = {
-                                        speechPitch = it
-                                        viewModel.updateProjectSettings(
-                                            selectedAspectRatio, narrationVolume, bgmVolume, watermarkText,
-                                            selectedVoiceId, speechRate, it, customVoiceUri
-                                        )
-                                    },
-                                    valueRange = 0.5f..1.5f,
-                                    colors = SliderDefaults.colors(thumbColor = ElectricViolet)
-                                )
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        OutlinedButton(
-                            onClick = { audioPicker.launch("audio/*") },
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = MetallicGold)
-                        ) {
-                            Icon(Icons.Default.Upload, contentDescription = null)
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(if (customVoiceUri != null) "Change External Voice Audio" else "Upload Custom Voice Audio (.mp3 / .wav)")
-                        }
                     }
-                }
-            }
 
-            // Studio Controls & Mixing Panel
-            item {
-                GlassmorphicCard(
-                    glowColor = ElectricVioletGlow,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column {
-                        Text(
-                            text = "ASPECT RATIO & AUDIO MIXING",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = ElectricViolet,
-                            fontWeight = FontWeight.Bold
-                        )
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        Text(
-                            text = "Output Aspect Ratio:",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = TextSecondary
-                        )
-
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier.padding(vertical = 4.dp)
+                    item {
+                        GlassmorphicCard(
+                            glowColor = ElectricVioletGlow,
+                            modifier = Modifier.fillMaxWidth()
                         ) {
-                            aspectRatios.forEach { ar ->
-                                FilterChip(
-                                    selected = selectedAspectRatio == ar,
-                                    onClick = {
-                                        selectedAspectRatio = ar
+                            Column {
+                                Text(text = "AUDIO VOLUME MIXER", style = MaterialTheme.typography.bodySmall, color = ElectricViolet, fontWeight = FontWeight.Bold)
+
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                Text(text = "Narration Volume: ${(narrationVolume * 100).toInt()}%", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+                                Slider(
+                                    value = narrationVolume,
+                                    onValueChange = {
+                                        narrationVolume = it
                                         viewModel.updateProjectSettings(
-                                            ar, narrationVolume, bgmVolume, watermarkText,
+                                            selectedAspectRatio, it, bgmVolume, watermarkText,
                                             selectedVoiceId, speechRate, speechPitch, customVoiceUri
                                         )
                                     },
-                                    label = { Text(ar, fontSize = 12.sp) },
-                                    colors = FilterChipDefaults.filterChipColors(
-                                        selectedContainerColor = ElectricViolet,
-                                        selectedLabelColor = TextPrimary
-                                    )
+                                    valueRange = 0f..1.5f,
+                                    colors = SliderDefaults.colors(thumbColor = ElectricViolet)
+                                )
+
+                                Text(text = "BGM Volume: ${(bgmVolume * 100).toInt()}%", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+                                Slider(
+                                    value = bgmVolume,
+                                    onValueChange = {
+                                        bgmVolume = it
+                                        viewModel.updateProjectSettings(
+                                            selectedAspectRatio, narrationVolume, it, watermarkText,
+                                            selectedVoiceId, speechRate, speechPitch, customVoiceUri
+                                        )
+                                    },
+                                    valueRange = 0f..1.0f,
+                                    colors = SliderDefaults.colors(thumbColor = MetallicGold)
                                 )
                             }
                         }
+                    }
+                }
 
-                        Spacer(modifier = Modifier.height(12.dp))
+                // Tab 2: Captions & SRT
+                2 -> {
+                    item {
+                        GlassmorphicCard(glowColor = MetallicGoldGlow, modifier = Modifier.fillMaxWidth()) {
+                            Column {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Button(
+                                        onClick = { srtPicker.launch("*/*") },
+                                        modifier = Modifier.weight(1f),
+                                        colors = ButtonDefaults.buttonColors(containerColor = MetallicGold)
+                                    ) {
+                                        Icon(Icons.Default.FileUpload, contentDescription = null, tint = DarkCharcoal, modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("Upload .SRT File", color = DarkCharcoal, fontWeight = FontWeight.Bold)
+                                    }
+                                }
 
-                        Text(
-                            text = "Burmese/English Narration Volume: ${(narrationVolume * 100).toInt()}%",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = TextSecondary
-                        )
-                        Slider(
-                            value = narrationVolume,
-                            onValueChange = {
-                                narrationVolume = it
-                                viewModel.updateProjectSettings(
-                                    selectedAspectRatio, it, bgmVolume, watermarkText,
-                                    selectedVoiceId, speechRate, speechPitch, customVoiceUri
-                                )
-                            },
-                            valueRange = 0f..1.5f,
-                            colors = SliderDefaults.colors(
-                                thumbColor = ElectricViolet,
-                                activeTrackColor = ElectricViolet
-                            )
-                        )
+                                Spacer(modifier = Modifier.height(12.dp))
 
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        Text(
-                            text = "Background Music (BGM) Volume: ${(bgmVolume * 100).toInt()}%",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = TextSecondary
-                        )
-                        Slider(
-                            value = bgmVolume,
-                            onValueChange = {
-                                bgmVolume = it
-                                viewModel.updateProjectSettings(
-                                    selectedAspectRatio, narrationVolume, it, watermarkText,
-                                    selectedVoiceId, speechRate, speechPitch, customVoiceUri
-                                )
-                            },
-                            valueRange = 0f..1.0f,
-                            colors = SliderDefaults.colors(
-                                thumbColor = MetallicGold,
-                                activeTrackColor = MetallicGold
-                            )
-                        )
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        OutlinedTextField(
-                            value = watermarkText,
-                            onValueChange = {
-                                watermarkText = it
-                                viewModel.updateProjectSettings(
-                                    selectedAspectRatio, narrationVolume, bgmVolume, it,
-                                    selectedVoiceId, speechRate, speechPitch, customVoiceUri
-                                )
-                            },
-                            label = { Text("Studio Watermark Overlay", color = TextSecondary) },
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = ElectricViolet,
-                                unfocusedBorderColor = CardCharcoal,
-                                focusedTextColor = TextPrimary,
-                                unfocusedTextColor = TextPrimary
-                            ),
-                            singleLine = true
-                        )
-
-                        Spacer(modifier = Modifier.height(16.dp))
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            OutlinedButton(
-                                onClick = onNavigateToSubtitles,
-                                modifier = Modifier.weight(1f),
-                                colors = ButtonDefaults.outlinedButtonColors(contentColor = MetallicGold)
-                            ) {
-                                Icon(Icons.Default.Subtitles, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("SRT Captions")
+                                Text(text = "Global Timestamp Shift:", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    OutlinedButton(onClick = { viewModel.shiftSubtitleTimestamps(-500L) }, modifier = Modifier.weight(1f)) {
+                                        Text("-500ms", fontSize = 11.sp)
+                                    }
+                                    OutlinedButton(onClick = { viewModel.shiftSubtitleTimestamps(500L) }, modifier = Modifier.weight(1f)) {
+                                        Text("+500ms", fontSize = 11.sp)
+                                    }
+                                }
                             }
+                        }
+                    }
 
-                            Button(
-                                onClick = onNavigateToExport,
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .testTag("export_video_button"),
-                                colors = ButtonDefaults.buttonColors(containerColor = ElectricViolet)
+                    item {
+                        GlassmorphicCard(modifier = Modifier.fillMaxWidth()) {
+                            Column {
+                                Text(text = "ADD SUBTITLE CUE", style = MaterialTheme.typography.bodySmall, color = ElectricViolet, fontWeight = FontWeight.Bold)
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                OutlinedTextField(
+                                    value = newBurmese,
+                                    onValueChange = { newBurmese = it },
+                                    label = { Text("Burmese Text (မြန်မာ)", color = TextSecondary) },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    singleLine = true
+                                )
+
+                                Spacer(modifier = Modifier.height(6.dp))
+
+                                OutlinedTextField(
+                                    value = newEnglish,
+                                    onValueChange = { newEnglish = it },
+                                    label = { Text("English Translation", color = TextSecondary) },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    singleLine = true
+                                )
+
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                Button(
+                                    onClick = {
+                                        val start = startMsText.toLongOrNull() ?: 0L
+                                        val end = endMsText.toLongOrNull() ?: 4000L
+                                        if (newBurmese.isNotBlank() || newEnglish.isNotBlank()) {
+                                            viewModel.addSubtitle(newBurmese, newEnglish, start, end)
+                                            newBurmese = ""
+                                            newEnglish = ""
+                                            startMsText = "$end"
+                                            endMsText = "${end + 4000}"
+                                        }
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = ButtonDefaults.buttonColors(containerColor = ElectricViolet)
+                                ) {
+                                    Icon(Icons.Default.Add, contentDescription = null)
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Add Caption Cue")
+                                }
+                            }
+                        }
+                    }
+
+                    items(subtitles) { sub ->
+                        GlassmorphicCard(modifier = Modifier.fillMaxWidth()) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(text = "[${sub.formattedStartTime()} ➔ ${sub.formattedEndTime()}]", color = MetallicGold, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    if (sub.textBurmese.isNotBlank()) Text(text = sub.textBurmese, color = TextPrimary, fontWeight = FontWeight.Bold)
+                                    if (sub.textEnglish.isNotBlank()) Text(text = sub.textEnglish, color = TextSecondary, fontSize = 12.sp)
+                                }
+                                IconButton(onClick = { viewModel.deleteSubtitle(sub.id) }) {
+                                    Icon(Icons.Default.Delete, contentDescription = "Delete", tint = TextMuted)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Tab 3: Render & Export
+                3 -> {
+                    item {
+                        GlassmorphicCard(glowColor = ElectricVioletGlow, modifier = Modifier.fillMaxWidth()) {
+                            Column {
+                                Text(text = "EXPORT QUALITY CONFIGURATION", style = MaterialTheme.typography.bodySmall, color = ElectricViolet, fontWeight = FontWeight.Bold)
+
+                                Spacer(modifier = Modifier.height(12.dp))
+
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    listOf("720p", "1080p", "4K").forEach { res ->
+                                        FilterChip(
+                                            selected = selectedResolution == res,
+                                            onClick = { selectedResolution = res },
+                                            label = { Text(res, fontSize = 12.sp) },
+                                            colors = FilterChipDefaults.filterChipColors(selectedContainerColor = ElectricViolet)
+                                        )
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(12.dp))
+
+                                OutlinedTextField(
+                                    value = watermarkText,
+                                    onValueChange = {
+                                        watermarkText = it
+                                        viewModel.updateProjectSettings(
+                                            selectedAspectRatio, narrationVolume, bgmVolume, it,
+                                            selectedVoiceId, speechRate, speechPitch, customVoiceUri
+                                        )
+                                    },
+                                    label = { Text("Watermark Text", color = TextSecondary) },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    singleLine = true
+                                )
+
+                                Spacer(modifier = Modifier.height(16.dp))
+
+                                Button(
+                                    onClick = {
+                                        viewModel.startVideoExport(selectedResolution, selectedFps, selectedAspectRatio)
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = ButtonDefaults.buttonColors(containerColor = ElectricViolet)
+                                ) {
+                                    Icon(Icons.Default.Download, contentDescription = null)
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Start FFmpeg MP4 Render Pipeline", fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+
+                    if (exportProgress != null) {
+                        item {
+                            val progress = exportProgress!!
+                            GlassmorphicCard(
+                                glowColor = if (progress.isDone) SuccessGreen.copy(alpha = 0.3f) else MetallicGoldGlow,
+                                borderColor = if (progress.isDone) SuccessGreen else MetallicGold,
+                                modifier = Modifier.fillMaxWidth()
                             ) {
-                                Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Export Video", fontWeight = FontWeight.Bold)
+                                Column {
+                                    Text(text = if (progress.isDone) "RENDER COMPLETE!" else "RENDERING...", color = TextPrimary, fontWeight = FontWeight.Bold)
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    LinearProgressIndicator(
+                                        progress = { progress.percent / 100f },
+                                        modifier = Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(4.dp)),
+                                        color = if (progress.isDone) SuccessGreen else ElectricViolet
+                                    )
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Text(text = progress.stage, color = TextSecondary, fontSize = 12.sp)
+                                }
                             }
                         }
                     }
