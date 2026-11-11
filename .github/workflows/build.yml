@@ -22,22 +22,25 @@ jobs:
         with:
           java-version: '17'
           distribution: 'temurin'
-          cache: gradle
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Build APKs
+      - name: Create Debug Keystore
         run: |
-          gradle :app:assembleDebug
-          gradle :app:assembleRelease --stacktrace
+          if [ ! -f debug.keystore ]; then
+            keytool -genkey -v -keystore debug.keystore -alias androiddebugkey -storepass android -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+          fi
+
+      - name: Build Debug APK
+        run: ./gradlew :app:assembleDebug
+
+      - name: Build Release APK (Unsigned)
+        run: ./gradlew :app:assembleRelease
 
       - name: Check Build Outputs
         run: |
-          echo "Listing debug APKs:"
-          ls -R app/build/outputs/apk/debug || true
-          echo "Listing release APKs:"
-          ls -R app/build/outputs/apk/release || true
+          ls -R app/build/outputs/apk/ || true
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
