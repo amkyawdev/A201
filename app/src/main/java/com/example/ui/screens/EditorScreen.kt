@@ -36,6 +36,10 @@ import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material.icons.filled.Subtitles
 import androidx.compose.material.icons.filled.Upload
 import androidx.compose.material.icons.filled.VideoFile
+import androidx.compose.material.icons.filled.VolumeOff
+import androidx.compose.material.icons.filled.VolumeUp
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenuItem
@@ -119,6 +123,9 @@ fun EditorScreen(
     var speechPitch by remember { mutableFloatStateOf(project.speechPitch) }
     var customVoiceUri by remember { mutableStateOf(project.customVoiceUri) }
 
+    var isMuted by remember { mutableStateOf(false) }
+    var showControls by remember { mutableStateOf(true) }
+    
     var voiceExpanded by remember { mutableStateOf(false) }
 
     var newBurmese by remember { mutableStateOf("") }
@@ -231,60 +238,149 @@ fun EditorScreen(
                                     else -> 9f / 16f
                                 }
 
+                                val videoUri by viewModel.videoUri.collectAsStateWithLifecycle()
+                                
                                 Box(
                                     modifier = Modifier
                                         .fillMaxWidth(if (selectedAspectRatio == "9:16") 0.65f else 1f)
                                         .aspectRatio(aspectMultiplier)
                                         .clip(RoundedCornerShape(12.dp))
                                         .background(CardCharcoal)
-                                        .border(1.dp, MetallicGold, RoundedCornerShape(12.dp)),
+                                        .border(1.dp, MetallicGold, RoundedCornerShape(12.dp))
+                                        .clickable(
+                                            interactionSource = remember { MutableInteractionSource() },
+                                            indication = null
+                                        ) { showControls = !showControls },
                                     contentAlignment = Alignment.Center
                                 ) {
-                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                        val videoUri by viewModel.videoUri.collectAsStateWithLifecycle()
-                                        
-                                        if (videoUri != null) {
-                                            AndroidView(
-                                                factory = { ctx ->
-                                                    androidx.media3.ui.PlayerView(ctx).apply {
-                                                        player = viewModel.exoPlayer
-                                                        useController = false
-                                                        layoutParams = android.view.ViewGroup.LayoutParams(
-                                                            android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                                                            android.view.ViewGroup.LayoutParams.MATCH_PARENT
+                                    if (videoUri != null) {
+                                        AndroidView(
+                                            factory = { ctx ->
+                                                androidx.media3.ui.PlayerView(ctx).apply {
+                                                    player = viewModel.exoPlayer
+                                                    useController = false
+                                                    layoutParams = android.view.ViewGroup.LayoutParams(
+                                                        android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                                                        android.view.ViewGroup.LayoutParams.MATCH_PARENT
+                                                    )
+                                                }
+                                            },
+                                            modifier = Modifier.fillMaxSize()
+                                        )
+
+                                        // Custom Overlay Controls
+                                        androidx.compose.animation.AnimatedVisibility(
+                                            visible = showControls,
+                                            enter = androidx.compose.animation.fadeIn(),
+                                            exit = androidx.compose.animation.fadeOut()
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .fillMaxSize()
+                                                    .background(Color.Black.copy(alpha = 0.4f))
+                                            ) {
+                                                // Center Play/Pause
+                                                IconButton(
+                                                    onClick = { 
+                                                        isPlaying = !isPlaying 
+                                                        if (isPlaying) viewModel.exoPlayer.play() else viewModel.exoPlayer.pause()
+                                                    },
+                                                    modifier = Modifier
+                                                        .size(64.dp)
+                                                        .align(Alignment.Center)
+                                                        .background(ElectricViolet.copy(alpha = 0.8f), CircleShape)
+                                                ) {
+                                                    Icon(
+                                                        imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                                                        contentDescription = null,
+                                                        tint = Color.White,
+                                                        modifier = Modifier.size(40.dp)
+                                                    )
+                                                }
+
+                                                // Bottom Controls (Seek & Volume)
+                                                Column(
+                                                    modifier = Modifier
+                                                        .align(Alignment.BottomCenter)
+                                                        .fillMaxWidth()
+                                                        .padding(12.dp)
+                                                ) {
+                                                    Row(
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        modifier = Modifier.fillMaxWidth()
+                                                    ) {
+                                                        Text(
+                                                            text = "${currentPositionSec}s",
+                                                            color = Color.White,
+                                                            fontSize = 12.sp,
+                                                            modifier = Modifier.width(40.dp)
                                                         )
+                                                        Slider(
+                                                            value = currentPositionSec.toFloat(),
+                                                            onValueChange = { 
+                                                                currentPositionSec = it.toInt()
+                                                                viewModel.exoPlayer.seekTo(it.toLong() * 1000)
+                                                            },
+                                                            valueRange = 0f..project.targetDurationSeconds.toFloat().coerceAtLeast(1f),
+                                                            modifier = Modifier.weight(1f),
+                                                            colors = SliderDefaults.colors(
+                                                                thumbColor = MetallicGold,
+                                                                activeTrackColor = ElectricViolet
+                                                            )
+                                                        )
+                                                        Text(
+                                                            text = "${project.targetDurationSeconds}s",
+                                                            color = Color.White,
+                                                            fontSize = 12.sp,
+                                                            modifier = Modifier.width(40.dp)
+                                                        )
+                                                        
+                                                        Spacer(modifier = Modifier.width(8.dp))
+                                                        
+                                                        IconButton(
+                                                            onClick = { 
+                                                                isMuted = !isMuted
+                                                                viewModel.exoPlayer.volume = if (isMuted) 0f else 1f
+                                                            },
+                                                            modifier = Modifier.size(32.dp)
+                                                        ) {
+                                                            Icon(
+                                                                imageVector = if (isMuted) Icons.Default.VolumeOff else Icons.Default.VolumeUp,
+                                                                contentDescription = null,
+                                                                tint = Color.White
+                                                            )
+                                                        }
                                                     }
-                                                },
-                                                modifier = Modifier.fillMaxSize()
-                                            )
-                                        } else {
-                                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                                Icon(
-                                                    imageVector = Icons.Default.Movie,
-                                                    contentDescription = null,
-                                                    tint = ElectricViolet,
-                                                    modifier = Modifier.size(48.dp)
-                                                )
-                                                Spacer(modifier = Modifier.height(8.dp))
-                                                Text(
-                                                    text = "No Video Loaded",
-                                                    style = MaterialTheme.typography.titleMedium,
-                                                    color = TextPrimary,
-                                                    fontWeight = FontWeight.Bold
-                                                )
-                                                Text(
-                                                    text = "Upload a movie to start editing",
-                                                    style = MaterialTheme.typography.bodySmall,
-                                                    color = TextMuted
-                                                )
+                                                }
                                             }
+                                        }
+                                    } else {
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                            Icon(
+                                                imageVector = Icons.Default.Movie,
+                                                contentDescription = null,
+                                                tint = ElectricViolet,
+                                                modifier = Modifier.size(48.dp)
+                                            )
+                                            Spacer(modifier = Modifier.height(8.dp))
+                                            Text(
+                                                text = "No Video Loaded",
+                                                style = MaterialTheme.typography.titleMedium,
+                                                color = TextPrimary,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                            Text(
+                                                text = "Upload a movie to start editing",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = TextMuted
+                                            )
                                         }
                                     }
 
                                     if (watermarkText.isNotBlank()) {
                                         Box(
                                             modifier = Modifier
-                                                .align(Alignment.BottomEnd)
+                                                .align(Alignment.TopEnd)
                                                 .padding(8.dp)
                                                 .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(4.dp))
                                                 .padding(horizontal = 6.dp, vertical = 2.dp)
