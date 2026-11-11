@@ -1,0 +1,6 @@
+{
+  "name": "Movie Recap Studio",
+  "description": "AI-powered studio for generating movie recaps, scene scripts, Burmese & English narration, subtitle sync, and multi-track video editing.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
