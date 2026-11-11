@@ -21,18 +21,14 @@ jobs:
           distribution: 'temurin'
           cache: gradle
 
-      - name: Grant execute permission for gradle
-        run: chmod +x gradlew
-        # Note: If gradlew is missing in the repo, standard 'gradle' command on runner is used.
-        # But usually Android projects have a wrapper. If not, we use 'gradle'.
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
 
       - name: Build Debug APK
         run: gradle :app:assembleDebug
 
-      - name: Build Release APK
+      - name: Build Release APK (Unsigned)
         run: gradle :app:assembleRelease
-        # This will build an unsigned release APK unless signing is configured.
-        # For AI Studio projects, we often use the debug APK for testing.
 
       - name: Upload Debug APK
         uses: actions/upload-artifact@v4
