@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.PlayArrow
@@ -65,6 +66,7 @@ import java.util.Locale
 @Composable
 fun DashboardScreen(
     viewModel: StudioViewModel,
+    onNavigateToUpload: () -> Unit,
     onNavigateToGenerator: () -> Unit,
     onNavigateToEditor: () -> Unit,
     onNavigateToAudio: () -> Unit,
@@ -81,7 +83,7 @@ fun DashboardScreen(
     ) {
         HeaderBar(
             title = "Movie Recap Studio",
-            subtitle = "AI Scripting • Burmese & English Narration • Multi-Track Editor",
+            subtitle = "Movie File Import • AI Scripting • Burmese & English Narration",
             actions = {
                 IconButton(onClick = onNavigateToSettings) {
                     Icon(
@@ -142,8 +144,20 @@ fun DashboardScreen(
 
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
+                            Button(
+                                onClick = onNavigateToUpload,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .testTag("upload_movie_button"),
+                                colors = ButtonDefaults.buttonColors(containerColor = MetallicGold)
+                            ) {
+                                Icon(Icons.Default.CloudUpload, contentDescription = null, tint = DarkCharcoal, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Upload Movie", color = DarkCharcoal, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+
                             Button(
                                 onClick = onNavigateToGenerator,
                                 modifier = Modifier
@@ -152,18 +166,8 @@ fun DashboardScreen(
                                 colors = ButtonDefaults.buttonColors(containerColor = ElectricViolet)
                             ) {
                                 Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("New Recap", fontSize = 13.sp)
-                            }
-
-                            OutlinedButton(
-                                onClick = onNavigateToAudio,
-                                modifier = Modifier.weight(1f),
-                                colors = ButtonDefaults.outlinedButtonColors(contentColor = MetallicGold)
-                            ) {
-                                Icon(Icons.Default.Mic, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Speech Studio", fontSize = 13.sp)
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("New Script", fontSize = 12.sp)
                             }
                         }
                     }
@@ -310,7 +314,7 @@ fun DashboardScreen(
                             )
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                text = "Tap 'New Recap' above to generate scene scripts and narration",
+                                text = "Tap 'Upload Movie' or 'New Script' above to get started",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = TextMuted
                             )

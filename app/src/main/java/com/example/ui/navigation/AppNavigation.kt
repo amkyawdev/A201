@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Home
@@ -35,6 +36,7 @@ import com.example.ui.screens.ExportScreen
 import com.example.ui.screens.RecapGeneratorScreen
 import com.example.ui.screens.SubtitlesScreen
 import com.example.ui.screens.TranscriptionScreen
+import com.example.ui.screens.UploadMovieScreen
 import com.example.ui.theme.CardCharcoal
 import com.example.ui.theme.DarkCharcoal
 import com.example.ui.theme.ElectricViolet
@@ -55,6 +57,7 @@ fun AppNavigation(viewModel: StudioViewModel) {
 
     val navItems = listOf(
         BottomNavItem(Screen.Dashboard, Icons.Default.Home, "Studio"),
+        BottomNavItem(Screen.Upload, Icons.Default.CloudUpload, "Upload"),
         BottomNavItem(Screen.Generator, Icons.Default.AutoAwesome, "AI Script"),
         BottomNavItem(Screen.Editor, Icons.Default.VideoLibrary, "Editor"),
         BottomNavItem(Screen.Transcription, Icons.Default.Mic, "Audio"),
@@ -118,6 +121,7 @@ fun AppNavigation(viewModel: StudioViewModel) {
             composable(Screen.Dashboard.route) {
                 DashboardScreen(
                     viewModel = viewModel,
+                    onNavigateToUpload = { navController.navigate(Screen.Upload.route) },
                     onNavigateToGenerator = { navController.navigate(Screen.Generator.route) },
                     onNavigateToEditor = { navController.navigate(Screen.Editor.route) },
                     onNavigateToAudio = { navController.navigate(Screen.Transcription.route) },
@@ -125,12 +129,17 @@ fun AppNavigation(viewModel: StudioViewModel) {
                 )
             }
 
+            composable(Screen.Upload.route) {
+                UploadMovieScreen(
+                    viewModel = viewModel,
+                    onProceedToScript = { navController.navigate(Screen.Editor.route) }
+                )
+            }
+
             composable(Screen.Generator.route) {
                 RecapGeneratorScreen(
                     viewModel = viewModel,
-                    onScriptGenerated = {
-                        navController.navigate(Screen.Editor.route)
-                    }
+                    onScriptGenerated = { navController.navigate(Screen.Editor.route) }
                 )
             }
 

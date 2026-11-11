@@ -2,7 +2,8 @@ package com.example.ui.navigation
 
 sealed class Screen(val route: String, val title: String) {
     data object Dashboard : Screen("dashboard", "Dashboard")
-    data object Generator : Screen("generator", "AI Generator")
+    data object Upload : Screen("upload", "Upload Movie")
+    data object Generator : Screen("generator", "AI Script")
     data object Editor : Screen("editor", "Timeline Editor")
     data object Transcription : Screen("transcription", "Audio & Speech")
     data object Subtitles : Screen("subtitles", "SRT Subtitles")
