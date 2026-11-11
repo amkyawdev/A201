@@ -1,5 +1,9 @@
 package com.example.ui.screens
 
+import android.net.Uri
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -18,14 +22,21 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AudioFile
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material.icons.filled.Subtitles
+import androidx.compose.material.icons.filled.Upload
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
@@ -48,11 +59,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.data.model.VoicePresets
 import com.example.ui.components.GlassmorphicCard
 import com.example.ui.components.HeaderBar
 import com.example.ui.components.MultiTrackTimelineView
@@ -62,12 +75,12 @@ import com.example.ui.theme.ElectricViolet
 import com.example.ui.theme.ElectricVioletGlow
 import com.example.ui.theme.MetallicGold
 import com.example.ui.theme.MetallicGoldGlow
-import com.example.ui.theme.SurfaceCharcoal
 import com.example.ui.theme.TextMuted
 import com.example.ui.theme.TextPrimary
 import com.example.ui.theme.TextSecondary
 import com.example.ui.viewmodel.StudioViewModel
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EditorScreen(
     viewModel: StudioViewModel,
@@ -75,6 +88,7 @@ fun EditorScreen(
     onNavigateToSubtitles: () -> Unit
 ) {
     val project by viewModel.activeProject.collectAsStateWithLifecycle()
+    val context = LocalContext.current
 
     var isPlaying by remember { mutableStateOf(false) }
     var currentPositionSec by remember { mutableIntStateOf(0) }
@@ -84,6 +98,26 @@ fun EditorScreen(
     var bgmVolume by remember { mutableFloatStateOf(project?.bgmVolume ?: 0.3f) }
     var watermarkText by remember { mutableStateOf(project?.watermarkText ?: "Movie Recap Studio") }
 
+    var selectedVoiceId by remember { mutableStateOf(project?.selectedVoiceId ?: "my_aung_cinematic") }
+    var speechRate by remember { mutableFloatStateOf(project?.speechRate ?: 1.0f) }
+    var speechPitch by remember { mutableFloatStateOf(project?.speechPitch ?: 1.0f) }
+    var customVoiceUri by remember { mutableStateOf(project?.customVoiceUri) }
+
+    var voiceExpanded by remember { mutableStateOf(false) }
+
+    val audioPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            customVoiceUri = uri.toString()
+            viewModel.updateProjectSettings(
+                selectedAspectRatio, narrationVolume, bgmVolume, watermarkText,
+                selectedVoiceId, speechRate, speechPitch, uri.toString()
+            )
+            Toast.makeText(context, "Voiceover file loaded!", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     val aspectRatios = listOf("9:16", "16:9", "1:1")
 
     Column(
@@ -92,8 +126,8 @@ fun EditorScreen(
             .background(DarkCharcoal)
     ) {
         HeaderBar(
-            title = project?.title ?: "Multi-Track Editor",
-            subtitle = "Video Trimming • Narration Mixing • Aspect Conversion"
+            title = project?.title ?: "Multi-Track Studio Editor",
+            subtitle = "Video Trimming • Burmese Voice Selector • Audio Mixer"
         )
 
         LazyColumn(
@@ -109,11 +143,10 @@ fun EditorScreen(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        // Dynamic Aspect Ratio Preview Window
                         val aspectMultiplier = when (selectedAspectRatio) {
                             "16:9" -> 16f / 9f
                             "1:1" -> 1f
-                            else -> 9f / 16f // 9:16 Vertical
+                            else -> 9f / 16f
                         }
 
                         Box(
@@ -146,7 +179,6 @@ fun EditorScreen(
                                 )
                             }
 
-                            // Watermark Overlay Preview
                             if (watermarkText.isNotBlank()) {
                                 Box(
                                     modifier = Modifier
@@ -167,7 +199,6 @@ fun EditorScreen(
 
                         Spacer(modifier = Modifier.height(12.dp))
 
-                        // Playback Control Bar
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -217,17 +248,148 @@ fun EditorScreen(
                 )
             }
 
-            // Studio Controls & Mixing Panel
+            // Voice Selector & Speech Controls
             item {
                 GlassmorphicCard(
                     glowColor = MetallicGoldGlow,
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.RecordVoiceOver, contentDescription = null, tint = MetallicGold)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "NARRATION VOICE & TTS SELECTOR",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MetallicGold,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        ExposedDropdownMenuBox(
+                            expanded = voiceExpanded,
+                            onExpandedChange = { voiceExpanded = !voiceExpanded }
+                        ) {
+                            val selectedVoice = VoicePresets.ALL_VOICES.find { it.id == selectedVoiceId }
+                                ?: VoicePresets.ALL_VOICES.first()
+
+                            OutlinedTextField(
+                                value = "${selectedVoice.name} (${selectedVoice.languageName})",
+                                onValueChange = {},
+                                readOnly = true,
+                                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = voiceExpanded) },
+                                modifier = Modifier
+                                    .menuAnchor()
+                                    .fillMaxWidth(),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = ElectricViolet,
+                                    unfocusedBorderColor = CardCharcoal,
+                                    focusedTextColor = TextPrimary,
+                                    unfocusedTextColor = TextPrimary
+                                )
+                            )
+
+                            ExposedDropdownMenu(
+                                expanded = voiceExpanded,
+                                onDismissRequest = { voiceExpanded = false },
+                                modifier = Modifier.background(CardCharcoal)
+                            ) {
+                                VoicePresets.ALL_VOICES.forEach { voice ->
+                                    DropdownMenuItem(
+                                        text = {
+                                            Column {
+                                                Text(text = "${voice.name} • ${voice.gender}", color = TextPrimary, fontWeight = FontWeight.Bold)
+                                                Text(text = "${voice.languageName} • ${voice.description}", color = TextSecondary, fontSize = 11.sp)
+                                            }
+                                        },
+                                        onClick = {
+                                            selectedVoiceId = voice.id
+                                            voiceExpanded = false
+                                            viewModel.updateProjectSettings(
+                                                selectedAspectRatio, narrationVolume, bgmVolume, watermarkText,
+                                                voice.id, speechRate, speechPitch, customVoiceUri
+                                            )
+                                        }
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Speed: ${String.format("%.1f", speechRate)}x",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = TextSecondary
+                                )
+                                Slider(
+                                    value = speechRate,
+                                    onValueChange = {
+                                        speechRate = it
+                                        viewModel.updateProjectSettings(
+                                            selectedAspectRatio, narrationVolume, bgmVolume, watermarkText,
+                                            selectedVoiceId, it, speechPitch, customVoiceUri
+                                        )
+                                    },
+                                    valueRange = 0.5f..2.0f,
+                                    colors = SliderDefaults.colors(thumbColor = MetallicGold)
+                                )
+                            }
+
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Pitch: ${String.format("%.1f", speechPitch)}x",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = TextSecondary
+                                )
+                                Slider(
+                                    value = speechPitch,
+                                    onValueChange = {
+                                        speechPitch = it
+                                        viewModel.updateProjectSettings(
+                                            selectedAspectRatio, narrationVolume, bgmVolume, watermarkText,
+                                            selectedVoiceId, speechRate, it, customVoiceUri
+                                        )
+                                    },
+                                    valueRange = 0.5f..1.5f,
+                                    colors = SliderDefaults.colors(thumbColor = ElectricViolet)
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        OutlinedButton(
+                            onClick = { audioPicker.launch("audio/*") },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = MetallicGold)
+                        ) {
+                            Icon(Icons.Default.Upload, contentDescription = null)
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(if (customVoiceUri != null) "Change External Voice Audio" else "Upload Custom Voice Audio (.mp3 / .wav)")
+                        }
+                    }
+                }
+            }
+
+            // Studio Controls & Mixing Panel
+            item {
+                GlassmorphicCard(
+                    glowColor = ElectricVioletGlow,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column {
                         Text(
-                            text = "AUDIO & ASPECT RATIO MIXER",
+                            text = "ASPECT RATIO & AUDIO MIXING",
                             style = MaterialTheme.typography.bodySmall,
-                            color = MetallicGold,
+                            color = ElectricViolet,
                             fontWeight = FontWeight.Bold
                         )
 
@@ -248,7 +410,10 @@ fun EditorScreen(
                                     selected = selectedAspectRatio == ar,
                                     onClick = {
                                         selectedAspectRatio = ar
-                                        viewModel.updateProjectSettings(ar, narrationVolume, bgmVolume, watermarkText)
+                                        viewModel.updateProjectSettings(
+                                            ar, narrationVolume, bgmVolume, watermarkText,
+                                            selectedVoiceId, speechRate, speechPitch, customVoiceUri
+                                        )
                                     },
                                     label = { Text(ar, fontSize = 12.sp) },
                                     colors = FilterChipDefaults.filterChipColors(
@@ -270,7 +435,10 @@ fun EditorScreen(
                             value = narrationVolume,
                             onValueChange = {
                                 narrationVolume = it
-                                viewModel.updateProjectSettings(selectedAspectRatio, it, bgmVolume, watermarkText)
+                                viewModel.updateProjectSettings(
+                                    selectedAspectRatio, it, bgmVolume, watermarkText,
+                                    selectedVoiceId, speechRate, speechPitch, customVoiceUri
+                                )
                             },
                             valueRange = 0f..1.5f,
                             colors = SliderDefaults.colors(
@@ -290,7 +458,10 @@ fun EditorScreen(
                             value = bgmVolume,
                             onValueChange = {
                                 bgmVolume = it
-                                viewModel.updateProjectSettings(selectedAspectRatio, narrationVolume, it, watermarkText)
+                                viewModel.updateProjectSettings(
+                                    selectedAspectRatio, narrationVolume, it, watermarkText,
+                                    selectedVoiceId, speechRate, speechPitch, customVoiceUri
+                                )
                             },
                             valueRange = 0f..1.0f,
                             colors = SliderDefaults.colors(
@@ -305,7 +476,10 @@ fun EditorScreen(
                             value = watermarkText,
                             onValueChange = {
                                 watermarkText = it
-                                viewModel.updateProjectSettings(selectedAspectRatio, narrationVolume, bgmVolume, it)
+                                viewModel.updateProjectSettings(
+                                    selectedAspectRatio, narrationVolume, bgmVolume, it,
+                                    selectedVoiceId, speechRate, speechPitch, customVoiceUri
+                                )
                             },
                             label = { Text("Studio Watermark Overlay", color = TextSecondary) },
                             modifier = Modifier.fillMaxWidth(),

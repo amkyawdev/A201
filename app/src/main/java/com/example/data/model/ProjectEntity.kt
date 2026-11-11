@@ -19,6 +19,10 @@ data class ProjectEntity(
     val bgmVolume: Float = 0.3f,
     val masterVolume: Float = 1.0f,
     val watermarkText: String = "Movie Recap Studio",
+    val selectedVoiceId: String = "my_aung_cinematic",
+    val speechRate: Float = 1.0f,
+    val speechPitch: Float = 1.0f,
+    val customVoiceUri: String? = null,
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis(),
     val status: String = "Draft" // "Draft", "Processing", "Completed"

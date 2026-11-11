@@ -1,6 +1,9 @@
 package com.example.ui.screens
 
+import android.net.Uri
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -18,6 +21,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.FileUpload
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Subtitles
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -52,6 +57,7 @@ import com.example.ui.theme.DarkCharcoal
 import com.example.ui.theme.ElectricViolet
 import com.example.ui.theme.ElectricVioletGlow
 import com.example.ui.theme.MetallicGold
+import com.example.ui.theme.MetallicGoldGlow
 import com.example.ui.theme.TextMuted
 import com.example.ui.theme.TextPrimary
 import com.example.ui.theme.TextSecondary
@@ -67,7 +73,30 @@ fun SubtitlesScreen(viewModel: StudioViewModel) {
     var newEnglish by remember { mutableStateOf("") }
     var startMsText by remember { mutableStateOf("0") }
     var endMsText by remember { mutableStateOf("4000") }
-    var languageMode by remember { mutableStateOf("dual") } // "dual", "my", "en"
+    var languageMode by remember { mutableStateOf("dual") }
+    var searchQuery by remember { mutableStateOf("") }
+
+    val filePicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            try {
+                val content = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
+                if (!content.isNullOrBlank()) {
+                    viewModel.importSubtitlesFromSrtContent(content)
+                    Toast.makeText(context, "Subtitles imported from file!", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                Toast.makeText(context, "Failed to read subtitle file", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    val filteredSubtitles = subtitles.filter { sub ->
+        searchQuery.isBlank() ||
+                sub.textBurmese.contains(searchQuery, ignoreCase = true) ||
+                sub.textEnglish.contains(searchQuery, ignoreCase = true)
+    }
 
     Column(
         modifier = Modifier
@@ -75,8 +104,8 @@ fun SubtitlesScreen(viewModel: StudioViewModel) {
             .background(DarkCharcoal)
     ) {
         HeaderBar(
-            title = "SRT & VTT Subtitle Editor",
-            subtitle = "Burmese (မြန်မာ) + English Caption Timing & Export"
+            title = "SRT & VTT Subtitle Studio",
+            subtitle = "Import External SRT/VTT • Time Shifting • Dual Language Editing"
         )
 
         LazyColumn(
@@ -85,7 +114,83 @@ fun SubtitlesScreen(viewModel: StudioViewModel) {
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Language Display Filter
+            // Import & Time Shift Actions
+            item {
+                GlassmorphicCard(
+                    glowColor = MetallicGoldGlow,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column {
+                        Text(
+                            text = "IMPORT EXTERNAL SRT & TIMELINE SHIFT",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MetallicGold,
+                            fontWeight = FontWeight.Bold
+                        )
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Button(
+                                onClick = { filePicker.launch("*/*") },
+                                modifier = Modifier.weight(1f),
+                                colors = ButtonDefaults.buttonColors(containerColor = MetallicGold)
+                            ) {
+                                Icon(Icons.Default.FileUpload, contentDescription = null, tint = DarkCharcoal, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Upload .SRT / .VTT File", color = DarkCharcoal, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        Text(
+                            text = "Global Timestamp Shifting:",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextSecondary
+                        )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick = { viewModel.shiftSubtitleTimestamps(-1000L) },
+                                modifier = Modifier.weight(1f),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = ElectricViolet)
+                            ) {
+                                Text("-1s", fontSize = 11.sp)
+                            }
+                            OutlinedButton(
+                                onClick = { viewModel.shiftSubtitleTimestamps(-500L) },
+                                modifier = Modifier.weight(1f),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = ElectricViolet)
+                            ) {
+                                Text("-500ms", fontSize = 11.sp)
+                            }
+                            OutlinedButton(
+                                onClick = { viewModel.shiftSubtitleTimestamps(500L) },
+                                modifier = Modifier.weight(1f),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = MetallicGold)
+                            ) {
+                                Text("+500ms", fontSize = 11.sp)
+                            }
+                            OutlinedButton(
+                                onClick = { viewModel.shiftSubtitleTimestamps(1000L) },
+                                modifier = Modifier.weight(1f),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = MetallicGold)
+                            ) {
+                                Text("+1s", fontSize = 11.sp)
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Language Filter & Export Actions
             item {
                 GlassmorphicCard(
                     glowColor = ElectricVioletGlow,
@@ -95,7 +200,7 @@ fun SubtitlesScreen(viewModel: StudioViewModel) {
                         Text(
                             text = "CAPTION DISPLAY MODE & EXPORT",
                             style = MaterialTheme.typography.bodySmall,
-                            color = MetallicGold,
+                            color = ElectricViolet,
                             fontWeight = FontWeight.Bold
                         )
 
@@ -111,7 +216,7 @@ fun SubtitlesScreen(viewModel: StudioViewModel) {
                             FilterChip(
                                 selected = languageMode == "my",
                                 onClick = { languageMode = "my" },
-                                label = { Text("Burmese Only (မြန်မာ)", fontSize = 11.sp) },
+                                label = { Text("Burmese Only", fontSize = 11.sp) },
                                 colors = FilterChipDefaults.filterChipColors(selectedContainerColor = ElectricViolet)
                             )
                             FilterChip(
@@ -160,6 +265,24 @@ fun SubtitlesScreen(viewModel: StudioViewModel) {
                         }
                     }
                 }
+            }
+
+            // Search Filter Box
+            item {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    label = { Text("Search Subtitles", color = TextSecondary) },
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = TextMuted) },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = ElectricViolet,
+                        unfocusedBorderColor = CardCharcoal,
+                        focusedTextColor = TextPrimary,
+                        unfocusedTextColor = TextPrimary
+                    ),
+                    singleLine = true
+                )
             }
 
             // Add New Subtitle Form
@@ -261,7 +384,7 @@ fun SubtitlesScreen(viewModel: StudioViewModel) {
             }
 
             // Subtitle List
-            items(subtitles) { sub ->
+            items(filteredSubtitles) { sub ->
                 GlassmorphicCard(modifier = Modifier.fillMaxWidth()) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),

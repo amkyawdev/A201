@@ -57,10 +57,12 @@ fun ApiSettingsScreen(viewModel: StudioViewModel) {
     val geminiKey by viewModel.geminiApiKey.collectAsStateWithLifecycle()
     val elevenLabsKey by viewModel.elevenLabsApiKey.collectAsStateWithLifecycle()
     val assemblyAiKey by viewModel.assemblyAiApiKey.collectAsStateWithLifecycle()
+    val openAiKey by viewModel.openAiApiKey.collectAsStateWithLifecycle()
 
     var geminiInput by remember(geminiKey) { mutableStateOf(geminiKey) }
     var elevenLabsInput by remember(elevenLabsKey) { mutableStateOf(elevenLabsKey) }
     var assemblyAiInput by remember(assemblyAiKey) { mutableStateOf(assemblyAiKey) }
+    var openAiInput by remember(openAiKey) { mutableStateOf(openAiKey) }
 
     val context = LocalContext.current
 
@@ -70,8 +72,8 @@ fun ApiSettingsScreen(viewModel: StudioViewModel) {
             .background(DarkCharcoal)
     ) {
         HeaderBar(
-            title = "API & Provider Settings (BYOK)",
-            subtitle = "Encrypted On-Device Credentials Storage"
+            title = "API & Provider Credentials (BYOK)",
+            subtitle = "Encrypted On-Device Storage • User Key Configuration"
         )
 
         LazyColumn(
@@ -121,7 +123,7 @@ fun ApiSettingsScreen(viewModel: StudioViewModel) {
                         OutlinedTextField(
                             value = elevenLabsInput,
                             onValueChange = { elevenLabsInput = it },
-                            label = { Text("ElevenLabs API Key (Burmese & English TTS)", color = TextSecondary) },
+                            label = { Text("ElevenLabs API Key (Burmese & English Voice TTS)", color = TextSecondary) },
                             modifier = Modifier.fillMaxWidth(),
                             visualTransformation = PasswordVisualTransformation(),
                             colors = OutlinedTextFieldDefaults.colors(
@@ -150,12 +152,29 @@ fun ApiSettingsScreen(viewModel: StudioViewModel) {
                             singleLine = true
                         )
 
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        OutlinedTextField(
+                            value = openAiInput,
+                            onValueChange = { openAiInput = it },
+                            label = { Text("OpenAI / Whisper API Key (Optional STT)", color = TextSecondary) },
+                            modifier = Modifier.fillMaxWidth(),
+                            visualTransformation = PasswordVisualTransformation(),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = ElectricViolet,
+                                unfocusedBorderColor = CardCharcoal,
+                                focusedTextColor = TextPrimary,
+                                unfocusedTextColor = TextPrimary
+                            ),
+                            singleLine = true
+                        )
+
                         Spacer(modifier = Modifier.height(16.dp))
 
                         Button(
                             onClick = {
-                                viewModel.saveApiSettings(geminiInput, elevenLabsInput, assemblyAiInput)
-                                Toast.makeText(context, "API Keys Saved Encrypted!", Toast.LENGTH_SHORT).show()
+                                viewModel.saveApiSettings(geminiInput, elevenLabsInput, assemblyAiInput, openAiInput)
+                                Toast.makeText(context, "Credentials Encrypted & Saved Successfully!", Toast.LENGTH_SHORT).show()
                             },
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -189,6 +208,7 @@ fun ApiSettingsScreen(viewModel: StudioViewModel) {
                         ProviderStatusRow("Gemini API", geminiKey.isNotBlank())
                         ProviderStatusRow("ElevenLabs TTS", elevenLabsKey.isNotBlank())
                         ProviderStatusRow("AssemblyAI Speech", assemblyAiKey.isNotBlank())
+                        ProviderStatusRow("OpenAI Whisper", openAiKey.isNotBlank())
                         ProviderStatusRow("Built-In Studio Engine", true)
                     }
                 }

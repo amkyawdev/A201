@@ -53,6 +53,8 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
     val assemblyAiApiKey = settingsDataStore.assemblyAiApiKey
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
+    val openAiApiKey = settingsDataStore.openAiApiKey
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
 
     private val _generatorState = MutableStateFlow<GeneratorUiState>(GeneratorUiState.Idle)
     val generatorState: StateFlow<GeneratorUiState> = _generatorState.asStateFlow()
@@ -91,7 +93,6 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 )
                 _generatorState.value = GeneratorUiState.Success(script)
 
-                // Auto-create initial project in Room
                 val newProject = ProjectEntity(
                     id = UUID.randomUUID().toString(),
                     title = script.movieTitle,
@@ -117,9 +118,9 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         _subtitles.value = parseSubtitles(project.subtitlesJson)
     }
 
-    fun saveApiSettings(gemini: String, elevenLabs: String, assemblyAi: String) {
+    fun saveApiSettings(gemini: String, elevenLabs: String, assemblyAi: String, openAi: String) {
         viewModelScope.launch {
-            settingsDataStore.saveApiKeys(gemini, elevenLabs, assemblyAi)
+            settingsDataStore.saveApiKeys(gemini, elevenLabs, assemblyAi, openAi)
         }
     }
 
@@ -127,7 +128,11 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         aspectRatio: String,
         narrationVol: Float,
         bgmVol: Float,
-        watermark: String
+        watermark: String,
+        voiceId: String = _activeProject.value?.selectedVoiceId ?: "my_aung_cinematic",
+        speechRate: Float = _activeProject.value?.speechRate ?: 1.0f,
+        speechPitch: Float = _activeProject.value?.speechPitch ?: 1.0f,
+        customVoiceUri: String? = _activeProject.value?.customVoiceUri
     ) {
         val current = _activeProject.value ?: return
         val updated = current.copy(
@@ -135,11 +140,43 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             narrationVolume = narrationVol,
             bgmVolume = bgmVol,
             watermarkText = watermark,
+            selectedVoiceId = voiceId,
+            speechRate = speechRate,
+            speechPitch = speechPitch,
+            customVoiceUri = customVoiceUri,
             updatedAt = System.currentTimeMillis()
         )
         _activeProject.value = updated
         viewModelScope.launch {
             projectRepo.updateProject(updated)
+        }
+    }
+
+    fun importSubtitlesFromSrtContent(rawSrtContent: String) {
+        val parsed = transcriptionRepo.parseSrtOrVttContent(rawSrtContent)
+        if (parsed.isNotEmpty()) {
+            val updatedList = _subtitles.value + parsed
+            _subtitles.value = updatedList
+            _activeProject.value?.let { proj ->
+                val updated = proj.copy(subtitlesJson = serializeSubtitles(updatedList))
+                _activeProject.value = updated
+                viewModelScope.launch { projectRepo.updateProject(updated) }
+            }
+        }
+    }
+
+    fun shiftSubtitleTimestamps(offsetMs: Long) {
+        val updatedList = _subtitles.value.map { item ->
+            item.copy(
+                startMs = (item.startMs + offsetMs).coerceAtLeast(0L),
+                endMs = (item.endMs + offsetMs).coerceAtLeast(100L)
+            )
+        }
+        _subtitles.value = updatedList
+        _activeProject.value?.let { proj ->
+            val updated = proj.copy(subtitlesJson = serializeSubtitles(updatedList))
+            _activeProject.value = updated
+            viewModelScope.launch { projectRepo.updateProject(updated) }
         }
     }
 
@@ -265,7 +302,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 )
             }
         } catch (e: Exception) {
-            // Return empty list on parse error
+            // Parse error catch
         }
         return list
     }
@@ -304,7 +341,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 )
             }
         } catch (e: Exception) {
-            // Return empty on parse error
+            // Parse error catch
         }
         return list
     }

@@ -14,6 +14,7 @@ class SettingsDataStore(private val context: Context) {
         val GEMINI_KEY = stringPreferencesKey("gemini_api_key")
         val ELEVENLABS_KEY = stringPreferencesKey("elevenlabs_api_key")
         val ASSEMBLYAI_KEY = stringPreferencesKey("assemblyai_api_key")
+        val OPENAI_KEY = stringPreferencesKey("openai_api_key")
         val DEFAULT_LANGUAGE = stringPreferencesKey("default_language")
         val DEFAULT_ASPECT_RATIO = stringPreferencesKey("default_aspect_ratio")
     }
@@ -30,6 +31,10 @@ class SettingsDataStore(private val context: Context) {
         prefs[ASSEMBLYAI_KEY] ?: ""
     }
 
+    val openAiApiKey: Flow<String> = context.dataStore.data.map { prefs ->
+        prefs[OPENAI_KEY] ?: ""
+    }
+
     val defaultLanguage: Flow<String> = context.dataStore.data.map { prefs ->
         prefs[DEFAULT_LANGUAGE] ?: "dual"
     }
@@ -38,11 +43,12 @@ class SettingsDataStore(private val context: Context) {
         prefs[DEFAULT_ASPECT_RATIO] ?: "9:16"
     }
 
-    suspend fun saveApiKeys(gemini: String, elevenLabs: String, assemblyAi: String) {
+    suspend fun saveApiKeys(gemini: String, elevenLabs: String, assemblyAi: String, openAi: String) {
         context.dataStore.edit { prefs ->
             prefs[GEMINI_KEY] = gemini
             prefs[ELEVENLABS_KEY] = elevenLabs
             prefs[ASSEMBLYAI_KEY] = assemblyAi
+            prefs[OPENAI_KEY] = openAi
         }
     }
 

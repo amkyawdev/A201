@@ -41,6 +41,57 @@ class AudioTranscriptionRepository {
         )
     }
 
+    fun parseSrtOrVttContent(content: String): List<SubtitleItem> {
+        val list = mutableListOf<SubtitleItem>()
+        if (content.isBlank()) return list
+
+        val blocks = content.split("\n\n")
+        for (block in blocks) {
+            val lines = block.lines().map { it.trim() }.filter { it.isNotBlank() }
+            if (lines.size >= 2) {
+                val timeLine = lines.firstOrNull { it.contains("-->") } ?: continue
+                val textLines = lines.subList(lines.indexOf(timeLine) + 1, lines.size)
+
+                val parts = timeLine.split("-->")
+                if (parts.size == 2) {
+                    val startMs = parseTimestampToMs(parts[0].trim())
+                    val endMs = parseTimestampToMs(parts[1].trim())
+
+                    val combinedText = textLines.joinToString("\n")
+                    val isBurmese = combinedText.any { it.code in 0x1000..0x109F }
+
+                    list.add(
+                        SubtitleItem(
+                            id = UUID.randomUUID().toString(),
+                            startMs = startMs,
+                            endMs = endMs,
+                            textBurmese = if (isBurmese) combinedText else "မြန်မာဘာသာပြန်ချက်: $combinedText",
+                            textEnglish = if (!isBurmese) combinedText else "English Translation: $combinedText"
+                        )
+                    )
+                }
+            }
+        }
+        return list
+    }
+
+    private fun parseTimestampToMs(timeStr: String): Long {
+        return try {
+            val clean = timeStr.replace(",", ".").trim()
+            val timeParts = clean.split(":")
+            if (timeParts.size == 3) {
+                val hours = timeParts[0].toLong()
+                val minutes = timeParts[1].toLong()
+                val secParts = timeParts[2].split(".")
+                val seconds = secParts[0].toLong()
+                val millis = if (secParts.size > 1) secParts[1].padEnd(3, '0').take(3).toLong() else 0L
+                (hours * 3600 + minutes * 60 + seconds) * 1000 + millis
+            } else 0L
+        } catch (e: Exception) {
+            0L
+        }
+    }
+
     fun exportToSrt(subtitles: List<SubtitleItem>, languageMode: String): String {
         val sb = StringBuilder()
         subtitles.forEachIndexed { index, item ->
