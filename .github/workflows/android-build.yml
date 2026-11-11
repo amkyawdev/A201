@@ -1,0 +1,68 @@
+name: Android Build & Release
+
+on:
+  push:
+    branches: [ "main" ]
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build Android Application
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Initialize Build Environment
+        run: |
+          if [ ! -f debug.keystore ]; then
+            keytool -genkey -v -keystore debug.keystore -alias androiddebugkey -storepass android -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+          fi
+
+      - name: Compile Application (Debug)
+        run: ./gradlew :app:assembleDebug
+
+      - name: Compile Application (Release)
+        run: ./gradlew :app:assembleRelease
+
+      - name: Prepare APKs for Release
+        run: |
+          mkdir -p release_assets
+          cp app/build/outputs/apk/debug/app-debug.apk release_assets/MovieRecapStudio_v${GITHUB_REF_NAME}_Debug.apk
+          if [ -f app/build/outputs/apk/release/app-release-unsigned.apk ]; then
+            cp app/build/outputs/apk/release/app-release-unsigned.apk release_assets/MovieRecapStudio_v${GITHUB_REF_NAME}_Release_Unsigned.apk
+          fi
+
+      - name: Create GitHub Application Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release_assets/*.apk
+          name: "Movie Recap Studio v${{ github.ref_name }}"
+          tag_name: ${{ github.ref_name }}
+          body: |
+            ## Movie Recap Studio Android Release
+            
+            This release contains the compiled application files for version ${{ github.ref_name }}.
+            
+            ### Assets
+            - `MovieRecapStudio_Debug.apk`: Standard debug build for testing.
+            - `MovieRecapStudio_Release_Unsigned.apk`: Optimized release build (unsigned).
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
