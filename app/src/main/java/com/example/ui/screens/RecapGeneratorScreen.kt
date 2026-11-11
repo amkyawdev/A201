@@ -1,5 +1,9 @@
 package com.example.ui.screens
 
+import android.net.Uri
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -17,8 +21,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.VideoFile
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -26,13 +32,17 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -40,6 +50,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -64,13 +75,30 @@ fun RecapGeneratorScreen(
     viewModel: StudioViewModel,
     onScriptGenerated: () -> Unit
 ) {
+    val context = LocalContext.current
+
+    var selectedSubTab by remember { mutableIntStateOf(0) } // 0: Upload Movie, 1: Script Prompt
+
+    var selectedVideoUri by remember { mutableStateOf<Uri?>(null) }
+    var uploadedMovieName by remember { mutableStateOf("") }
+
     var movieTitle by remember { mutableStateOf("Neon Shadows: Cyber City") }
     var selectedGenre by remember { mutableStateOf("Action Thriller") }
-    var targetDuration by remember { mutableStateOf(180) } // Seconds
+    var targetDuration by remember { mutableStateOf(180) }
     var customPrompt by remember { mutableStateOf("Focus on the climax battle scene and the mysterious betrayal under the neon rain.") }
 
-    val generatorState by viewModel.generatorState.collectAsStateWithLifecycle()
+    val videoPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            selectedVideoUri = uri
+            uploadedMovieName = uri.lastPathSegment ?: "Uploaded_Movie_File.mp4"
+            movieTitle = uploadedMovieName.replace(".mp4", "").replace("_", " ")
+            Toast.makeText(context, "Movie Video Selected!", Toast.LENGTH_SHORT).show()
+        }
+    }
 
+    val generatorState by viewModel.generatorState.collectAsStateWithLifecycle()
     val genres = listOf("Action Thriller", "Sci-Fi Mystery", "Horror", "Comedy", "Romantic Drama", "Anime / Reels")
 
     Column(
@@ -79,9 +107,27 @@ fun RecapGeneratorScreen(
             .background(DarkCharcoal)
     ) {
         HeaderBar(
-            title = "AI Recap Generator",
-            subtitle = "Scene-by-Scene Script • Burmese (မြန်မာ) + English Voiceover"
+            title = "AI Script & Movie Upload",
+            subtitle = "Upload Movie File • Auto Keyframes • Burmese (မြန်မာ) Narration"
         )
+
+        // Sub-Tabs: Upload Movie File vs Text Prompt
+        TabRow(
+            selectedTabIndex = selectedSubTab,
+            containerColor = CardCharcoal,
+            contentColor = MetallicGold
+        ) {
+            Tab(
+                selected = selectedSubTab == 0,
+                onClick = { selectedSubTab = 0 },
+                text = { Text("📤 Upload Movie File", fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+            )
+            Tab(
+                selected = selectedSubTab == 1,
+                onClick = { selectedSubTab = 1 },
+                text = { Text("✍️ Text Prompt Script", fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+            )
+        }
 
         LazyColumn(
             modifier = Modifier
@@ -89,6 +135,63 @@ fun RecapGeneratorScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            if (selectedSubTab == 0) {
+                // Tab 0: Upload Movie Card
+                item {
+                    GlassmorphicCard(
+                        glowColor = MetallicGoldGlow,
+                        borderColor = MetallicGold,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.CloudUpload,
+                                contentDescription = null,
+                                tint = MetallicGold,
+                                modifier = Modifier.size(48.dp)
+                            )
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            Text(
+                                text = if (selectedVideoUri != null) "MOVIE FILE ATTACHED" else "UPLOAD MOVIE / VIDEO FILE",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = TextPrimary
+                            )
+
+                            Text(
+                                text = if (selectedVideoUri != null) uploadedMovieName else "Select MP4, MKV, or MOV movie video file",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextSecondary
+                            )
+
+                            Spacer(modifier = Modifier.height(16.dp))
+
+                            Button(
+                                onClick = { videoPicker.launch("video/*") },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("upload_movie_video_button"),
+                                colors = ButtonDefaults.buttonColors(containerColor = MetallicGold)
+                            ) {
+                                Icon(Icons.Default.VideoFile, contentDescription = null, tint = DarkCharcoal)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = if (selectedVideoUri != null) "Change Movie File" else "Browse & Upload Movie File",
+                                    color = DarkCharcoal,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Script Parameters Form
             item {
                 GlassmorphicCard(
                     glowColor = ElectricVioletGlow,
@@ -122,11 +225,7 @@ fun RecapGeneratorScreen(
 
                         Spacer(modifier = Modifier.height(12.dp))
 
-                        Text(
-                            text = "Select Genre / Tone:",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = TextSecondary
-                        )
+                        Text(text = "Select Genre / Tone:", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
 
                         Row(
                             modifier = Modifier
@@ -139,10 +238,7 @@ fun RecapGeneratorScreen(
                                     selected = selectedGenre == g,
                                     onClick = { selectedGenre = g },
                                     label = { Text(g, fontSize = 12.sp) },
-                                    colors = FilterChipDefaults.filterChipColors(
-                                        selectedContainerColor = ElectricViolet,
-                                        selectedLabelColor = TextPrimary
-                                    )
+                                    colors = FilterChipDefaults.filterChipColors(selectedContainerColor = ElectricViolet)
                                 )
                             }
                         }
@@ -160,10 +256,7 @@ fun RecapGeneratorScreen(
                             onValueChange = { targetDuration = it.toInt() },
                             valueRange = 60f..300f,
                             steps = 3,
-                            colors = SliderDefaults.colors(
-                                thumbColor = MetallicGold,
-                                activeTrackColor = ElectricViolet
-                            )
+                            colors = SliderDefaults.colors(thumbColor = MetallicGold, activeTrackColor = ElectricViolet)
                         )
 
                         Spacer(modifier = Modifier.height(12.dp))
@@ -172,9 +265,7 @@ fun RecapGeneratorScreen(
                             value = customPrompt,
                             onValueChange = { customPrompt = it },
                             label = { Text("Custom Plot Focus / Instructions", color = TextSecondary) },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .testTag("custom_prompt_input"),
+                            modifier = Modifier.fillMaxWidth(),
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedBorderColor = ElectricViolet,
                                 unfocusedBorderColor = CardCharcoal,
@@ -202,11 +293,7 @@ fun RecapGeneratorScreen(
                             enabled = generatorState !is GeneratorUiState.Loading
                         ) {
                             if (generatorState is GeneratorUiState.Loading) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(20.dp),
-                                    color = TextPrimary,
-                                    strokeWidth = 2.dp
-                                )
+                                CircularProgressIndicator(modifier = Modifier.size(20.dp), color = TextPrimary, strokeWidth = 2.dp)
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text("Generating AI Script...")
                             } else {
@@ -219,7 +306,7 @@ fun RecapGeneratorScreen(
                 }
             }
 
-            // State Results
+            // Results State
             when (val state = generatorState) {
                 is GeneratorUiState.Success -> {
                     item {
@@ -230,11 +317,7 @@ fun RecapGeneratorScreen(
                         ) {
                             Column {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(
-                                        imageVector = Icons.Default.Movie,
-                                        contentDescription = null,
-                                        tint = MetallicGold
-                                    )
+                                    Icon(imageVector = Icons.Default.Movie, contentDescription = null, tint = MetallicGold)
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Text(
                                         text = state.script.movieTitle,
@@ -252,11 +335,7 @@ fun RecapGeneratorScreen(
                                 }
 
                                 Spacer(modifier = Modifier.height(8.dp))
-                                Text(
-                                    text = state.script.logline,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = TextSecondary
-                                )
+                                Text(text = state.script.logline, style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
                             }
                         }
                     }
@@ -271,54 +350,22 @@ fun RecapGeneratorScreen(
                                             .background(ElectricViolet)
                                             .padding(horizontal = 6.dp, vertical = 2.dp)
                                     ) {
-                                        Text(
-                                            text = "${scene.timeStartSeconds}s - ${scene.timeEndSeconds}s",
-                                            fontSize = 11.sp,
-                                            color = TextPrimary,
-                                            fontWeight = FontWeight.Bold
-                                        )
+                                        Text(text = "${scene.timeStartSeconds}s - ${scene.timeEndSeconds}s", fontSize = 11.sp, color = TextPrimary, fontWeight = FontWeight.Bold)
                                     }
                                     Spacer(modifier = Modifier.width(8.dp))
-                                    Text(
-                                        text = scene.title,
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.Bold,
-                                        color = TextPrimary
-                                    )
+                                    Text(text = scene.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = TextPrimary)
                                 }
 
                                 Spacer(modifier = Modifier.height(6.dp))
-                                Text(
-                                    text = "Shot: ${scene.shotDescription}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = TextMuted
-                                )
+                                Text(text = "Shot: ${scene.shotDescription}", style = MaterialTheme.typography.bodySmall, color = TextMuted)
 
                                 Spacer(modifier = Modifier.height(8.dp))
-                                Text(
-                                    text = "မြန်မာနောက်ခံစကားပြော:",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MetallicGold,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Text(
-                                    text = scene.narrationBurmese,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = TextPrimary
-                                )
+                                Text(text = "မြန်မာနောက်ခံစကားပြော:", style = MaterialTheme.typography.bodySmall, color = MetallicGold, fontWeight = FontWeight.Bold)
+                                Text(text = scene.narrationBurmese, style = MaterialTheme.typography.bodyMedium, color = TextPrimary)
 
                                 Spacer(modifier = Modifier.height(6.dp))
-                                Text(
-                                    text = "English Narration:",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = ElectricViolet,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Text(
-                                    text = scene.narrationEnglish,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = TextSecondary
-                                )
+                                Text(text = "English Narration:", style = MaterialTheme.typography.bodySmall, color = ElectricViolet, fontWeight = FontWeight.Bold)
+                                Text(text = scene.narrationEnglish, style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
                             }
                         }
                     }
@@ -326,16 +373,8 @@ fun RecapGeneratorScreen(
 
                 is GeneratorUiState.Error -> {
                     item {
-                        GlassmorphicCard(
-                            glowColor = Color.Red.copy(alpha = 0.2f),
-                            borderColor = Color.Red,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text(
-                                text = "Error: ${state.message}",
-                                color = Color.Red,
-                                style = MaterialTheme.typography.bodyMedium
-                            )
+                        GlassmorphicCard(glowColor = Color.Red.copy(alpha = 0.2f), borderColor = Color.Red, modifier = Modifier.fillMaxWidth()) {
+                            Text(text = "Error: ${state.message}", color = Color.Red)
                         }
                     }
                 }

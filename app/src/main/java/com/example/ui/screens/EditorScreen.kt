@@ -24,8 +24,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.FileUpload
@@ -36,7 +35,6 @@ import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material.icons.filled.Subtitles
 import androidx.compose.material.icons.filled.Upload
 import androidx.compose.material.icons.filled.VideoFile
-import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenuItem
@@ -71,7 +69,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -105,9 +102,7 @@ fun EditorScreen(
     val exportProgress by viewModel.exportProgress.collectAsStateWithLifecycle()
 
     val context = LocalContext.current
-    val clipboardManager = LocalClipboardManager.current
-
-    var selectedTab by remember { mutableIntStateOf(0) } // 0: Video, 1: Voice, 2: Captions, 3: Export
+    var selectedTab by remember { mutableIntStateOf(0) }
 
     var isPlaying by remember { mutableStateOf(false) }
     var currentPositionSec by remember { mutableIntStateOf(0) }
@@ -124,15 +119,22 @@ fun EditorScreen(
 
     var voiceExpanded by remember { mutableStateOf(false) }
 
-    // Subtitle form state
     var newBurmese by remember { mutableStateOf("") }
     var newEnglish by remember { mutableStateOf("") }
     var startMsText by remember { mutableStateOf("0") }
     var endMsText by remember { mutableStateOf("4000") }
 
-    // Export quality state
     var selectedResolution by remember { mutableStateOf("1080p") }
     var selectedFps by remember { mutableIntStateOf(30) }
+
+    val videoPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            val updatedName = uri.lastPathSegment ?: "Uploaded_Movie.mp4"
+            Toast.makeText(context, "Movie Video Uploaded: $updatedName", Toast.LENGTH_SHORT).show()
+        }
+    }
 
     val audioPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
@@ -176,7 +178,6 @@ fun EditorScreen(
             subtitle = "Genre: ${project.genre} • Aspect: ${selectedAspectRatio} • Duration: ${project.targetDurationSeconds}s"
         )
 
-        // Clean Segmented Studio Sub-Tabs
         ScrollableTabRow(
             selectedTabIndex = selectedTab,
             containerColor = CardCharcoal,
@@ -206,7 +207,6 @@ fun EditorScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             when (selectedTab) {
-                // Tab 0: Video & Timeline
                 0 -> {
                     item {
                         GlassmorphicCard(
@@ -266,6 +266,18 @@ fun EditorScreen(
                                             )
                                         }
                                     }
+                                }
+
+                                Spacer(modifier = Modifier.height(12.dp))
+
+                                Button(
+                                    onClick = { videoPicker.launch("video/*") },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = ButtonDefaults.buttonColors(containerColor = MetallicGold)
+                                ) {
+                                    Icon(Icons.Default.CloudUpload, contentDescription = null, tint = DarkCharcoal)
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Upload / Replace Movie Video File (.mp4 / .mkv)", color = DarkCharcoal, fontWeight = FontWeight.Bold)
                                 }
 
                                 Spacer(modifier = Modifier.height(12.dp))
@@ -343,7 +355,6 @@ fun EditorScreen(
                     }
                 }
 
-                // Tab 1: Voice & Audio
                 1 -> {
                     item {
                         GlassmorphicCard(
@@ -517,7 +528,6 @@ fun EditorScreen(
                     }
                 }
 
-                // Tab 2: Captions & SRT
                 2 -> {
                     item {
                         GlassmorphicCard(glowColor = MetallicGoldGlow, modifier = Modifier.fillMaxWidth()) {
@@ -614,7 +624,6 @@ fun EditorScreen(
                     }
                 }
 
-                // Tab 3: Render & Export
                 3 -> {
                     item {
                         GlassmorphicCard(glowColor = ElectricVioletGlow, modifier = Modifier.fillMaxWidth()) {
