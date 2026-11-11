@@ -32,31 +32,28 @@ jobs:
             keytool -genkey -v -keystore debug.keystore -alias androiddebugkey -storepass android -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
           fi
 
-      - name: Build Debug APK
-        run: ./gradlew :app:assembleDebug
-
-      - name: Build Release APK (Unsigned)
-        run: ./gradlew :app:assembleRelease
-
-      - name: Check Build Outputs
+      - name: Build APKs
         run: |
-          ls -R app/build/outputs/apk/ || true
+          ./gradlew :app:assembleDebug
+          ./gradlew :app:assembleRelease
 
-      - name: Upload Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: movie-recap-studio-apks
-          path: app/build/outputs/apk/*/
+      - name: Rename APKs for Release
+        run: |
+          cp app/build/outputs/apk/debug/app-debug.apk MovieRecapStudio_Debug.apk
+          if [ -f app/build/outputs/apk/release/app-release-unsigned.apk ]; then
+            cp app/build/outputs/apk/release/app-release-unsigned.apk MovieRecapStudio_Release_Unsigned.apk
+          fi
 
       - name: Create Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            app/build/outputs/apk/debug/app-debug.apk
-            app/build/outputs/apk/release/app-release-unsigned.apk
+            MovieRecapStudio_Debug.apk
+            MovieRecapStudio_Release_Unsigned.apk
           name: Release ${{ github.ref_name }}
-          tag_name: ${{ github.ref }}
+          tag_name: ${{ github.ref_name }}
+          body: "Movie Recap Studio Android APK Build"
           draft: false
           prerelease: false
         env:
