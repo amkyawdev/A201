@@ -74,6 +74,43 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     private val _recordingDurationSec = MutableStateFlow(0)
     val recordingDurationSec: StateFlow<Int> = _recordingDurationSec.asStateFlow()
 
+    init {
+        viewModelScope.launch {
+            allProjects.collect { projects ->
+                if (_activeProject.value == null) {
+                    if (projects.isNotEmpty()) {
+                        val first = projects.first()
+                        _activeProject.value = first
+                        _subtitles.value = parseSubtitles(first.subtitlesJson)
+                    } else {
+                        ensureActiveProject()
+                    }
+                }
+            }
+        }
+    }
+
+    fun ensureActiveProject(): ProjectEntity {
+        val current = _activeProject.value
+        if (current != null) return current
+
+        val defaultProject = ProjectEntity(
+            id = UUID.randomUUID().toString(),
+            title = "Neon Shadows: Cyber City",
+            genre = "Action Thriller",
+            targetDurationSeconds = 180,
+            aspectRatio = "9:16",
+            language = "dual",
+            videoUri = null,
+            videoDurationSeconds = 180L,
+            scenesJson = "[]",
+            subtitlesJson = "[]"
+        )
+        _activeProject.value = defaultProject
+        viewModelScope.launch { projectRepo.saveProject(defaultProject) }
+        return defaultProject
+    }
+
     fun generateRecap(
         movieTitle: String,
         genre: String,
@@ -116,6 +153,9 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     fun selectProject(project: ProjectEntity) {
         _activeProject.value = project
         _subtitles.value = parseSubtitles(project.subtitlesJson)
+        viewModelScope.launch {
+            projectRepo.saveProject(project)
+        }
     }
 
     fun saveApiSettings(gemini: String, elevenLabs: String, assemblyAi: String, openAi: String) {
@@ -134,7 +174,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         speechPitch: Float = _activeProject.value?.speechPitch ?: 1.0f,
         customVoiceUri: String? = _activeProject.value?.customVoiceUri
     ) {
-        val current = _activeProject.value ?: return
+        val current = ensureActiveProject()
         val updated = current.copy(
             aspectRatio = aspectRatio,
             narrationVolume = narrationVol,
@@ -240,7 +280,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun startVideoExport(resolution: String, fps: Int, aspectRatio: String) {
-        val proj = _activeProject.value ?: return
+        val proj = ensureActiveProject()
         viewModelScope.launch {
             exportRepo.exportMovieRecapVideo(proj, resolution, fps, aspectRatio).collect { progress ->
                 _exportProgress.value = progress
