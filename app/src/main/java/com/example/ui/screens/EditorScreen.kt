@@ -24,6 +24,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
@@ -72,6 +73,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.model.VoicePresets
 import com.example.ui.components.GlassmorphicCard
@@ -131,6 +133,7 @@ fun EditorScreen(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
         if (uri != null) {
+            viewModel.updateVideoUri(uri)
             val updatedName = uri.lastPathSegment ?: "Uploaded_Movie.mp4"
             Toast.makeText(context, "Movie Video Uploaded: $updatedName", Toast.LENGTH_SHORT).show()
         }
@@ -162,6 +165,14 @@ fun EditorScreen(
             } catch (e: Exception) {
                 Toast.makeText(context, "Failed to read subtitle file", Toast.LENGTH_SHORT).show()
             }
+        }
+    }
+
+    androidx.compose.runtime.LaunchedEffect(viewModel.exoPlayer) {
+        while (true) {
+            currentPositionSec = (viewModel.exoPlayer.currentPosition / 1000).toInt()
+            isPlaying = viewModel.exoPlayer.isPlaying
+            kotlinx.coroutines.delay(500)
         }
     }
 
@@ -230,24 +241,44 @@ fun EditorScreen(
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                        Icon(
-                                            imageVector = Icons.Default.Movie,
-                                            contentDescription = null,
-                                            tint = ElectricViolet,
-                                            modifier = Modifier.size(48.dp)
-                                        )
-                                        Spacer(modifier = Modifier.height(8.dp))
-                                        Text(
-                                            text = project.title,
-                                            style = MaterialTheme.typography.titleMedium,
-                                            color = TextPrimary,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                        Text(
-                                            text = "Previewing $selectedAspectRatio Mode",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = TextMuted
-                                        )
+                                        val videoUri by viewModel.videoUri.collectAsStateWithLifecycle()
+                                        
+                                        if (videoUri != null) {
+                                            AndroidView(
+                                                factory = { ctx ->
+                                                    androidx.media3.ui.PlayerView(ctx).apply {
+                                                        player = viewModel.exoPlayer
+                                                        useController = false
+                                                        layoutParams = android.view.ViewGroup.LayoutParams(
+                                                            android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                                                            android.view.ViewGroup.LayoutParams.MATCH_PARENT
+                                                        )
+                                                    }
+                                                },
+                                                modifier = Modifier.fillMaxSize()
+                                            )
+                                        } else {
+                                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Movie,
+                                                    contentDescription = null,
+                                                    tint = ElectricViolet,
+                                                    modifier = Modifier.size(48.dp)
+                                                )
+                                                Spacer(modifier = Modifier.height(8.dp))
+                                                Text(
+                                                    text = "No Video Loaded",
+                                                    style = MaterialTheme.typography.titleMedium,
+                                                    color = TextPrimary,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                                Text(
+                                                    text = "Upload a movie to start editing",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = TextMuted
+                                                )
+                                            }
+                                        }
                                     }
 
                                     if (watermarkText.isNotBlank()) {
@@ -287,7 +318,10 @@ fun EditorScreen(
                                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                                 ) {
                                     IconButton(
-                                        onClick = { isPlaying = !isPlaying },
+                                        onClick = { 
+                                            isPlaying = !isPlaying 
+                                            if (isPlaying) viewModel.exoPlayer.play() else viewModel.exoPlayer.pause()
+                                        },
                                         modifier = Modifier
                                             .size(48.dp)
                                             .clip(CircleShape)
@@ -309,7 +343,10 @@ fun EditorScreen(
                                         )
                                         Slider(
                                             value = currentPositionSec.toFloat(),
-                                            onValueChange = { currentPositionSec = it.toInt() },
+                                            onValueChange = { 
+                                                currentPositionSec = it.toInt()
+                                                viewModel.exoPlayer.seekTo(it.toLong() * 1000)
+                                            },
                                             valueRange = 0f..project.targetDurationSeconds.toFloat(),
                                             colors = SliderDefaults.colors(
                                                 thumbColor = MetallicGold,
@@ -481,6 +518,33 @@ fun EditorScreen(
                                     Icon(Icons.Default.Upload, contentDescription = null)
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Text(if (customVoiceUri != null) "Change External Voice File" else "Upload Custom Voice File (.mp3 / .wav)")
+                                }
+                                
+                                Spacer(modifier = Modifier.height(8.dp))
+                                
+                                Button(
+                                    onClick = { 
+                                        val scenes = viewModel.deserializeScenes(project.scenesJson)
+                                        val fullText = scenes.joinToString(". ") { it.narrationBurmese }
+                                        viewModel.generateVoiceover(fullText)
+                                        Toast.makeText(context, "Generating AI Voiceover with ElevenLabs...", Toast.LENGTH_SHORT).show()
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = ButtonDefaults.buttonColors(containerColor = ElectricViolet),
+                                    enabled = !viewModel.elevenLabsApiKey.value.isNullOrBlank()
+                                ) {
+                                    Icon(Icons.Default.AutoAwesome, contentDescription = null)
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Generate AI Voiceover (ElevenLabs)")
+                                }
+                                
+                                if (viewModel.elevenLabsApiKey.value.isNullOrBlank()) {
+                                    Text(
+                                        text = "⚠️ ElevenLabs API Key missing in Settings",
+                                        color = Color.Red,
+                                        fontSize = 10.sp,
+                                        modifier = Modifier.padding(top = 4.dp)
+                                    )
                                 }
                             }
                         }

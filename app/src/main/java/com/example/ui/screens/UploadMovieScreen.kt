@@ -96,6 +96,7 @@ fun UploadMovieScreen(
         if (uri != null) {
             selectedVideoUri = uri
             movieName = uri.lastPathSegment ?: "Uploaded_Movie_File.mp4"
+            viewModel.updateVideoUri(uri)
             Toast.makeText(context, "Movie Video Selected Successfully!", Toast.LENGTH_SHORT).show()
         }
     }

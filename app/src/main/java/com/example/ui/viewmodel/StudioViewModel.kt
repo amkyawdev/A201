@@ -1,6 +1,7 @@
 package com.example.ui.viewmodel
 
 import android.app.Application
+import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.local.AppDatabase
@@ -13,7 +14,11 @@ import com.example.data.repository.AiRecapRepository
 import com.example.data.repository.AudioTranscriptionRepository
 import com.example.data.repository.ExportProgress
 import com.example.data.repository.ProjectRepository
+import com.example.data.repository.TtsRepository
 import com.example.data.repository.VideoExportRepository
+import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -38,7 +43,16 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     private val aiRepo = AiRecapRepository()
     private val transcriptionRepo = AudioTranscriptionRepository()
     private val exportRepo = VideoExportRepository()
+    private val ttsRepo = TtsRepository(application)
     private val settingsDataStore = SettingsDataStore(application)
+    
+    val exoPlayer: ExoPlayer = ExoPlayer.Builder(application).build().apply {
+        repeatMode = Player.REPEAT_MODE_ONE
+        playWhenReady = false
+    }
+
+    private val _videoUri = MutableStateFlow<String?>(null)
+    val videoUri: StateFlow<String?> = _videoUri.asStateFlow()
 
     val allProjects: StateFlow<List<ProjectEntity>> = projectRepo.allProjects
         .stateIn(
@@ -153,9 +167,40 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     fun selectProject(project: ProjectEntity) {
         _activeProject.value = project
         _subtitles.value = parseSubtitles(project.subtitlesJson)
+        _videoUri.value = project.videoUri
+        project.videoUri?.let { uri ->
+            loadVideoIntoPlayer(uri)
+        }
         viewModelScope.launch {
             projectRepo.saveProject(project)
         }
+    }
+
+    private fun loadVideoIntoPlayer(uriString: String) {
+        try {
+            val mediaItem = MediaItem.fromUri(Uri.parse(uriString))
+            exoPlayer.setMediaItem(mediaItem)
+            exoPlayer.prepare()
+        } catch (e: Exception) {
+            // Log or handle error
+        }
+    }
+
+    fun updateVideoUri(uri: Uri) {
+        val current = ensureActiveProject()
+        val uriString = uri.toString()
+        val updated = current.copy(videoUri = uriString, updatedAt = System.currentTimeMillis())
+        _activeProject.value = updated
+        _videoUri.value = uriString
+        loadVideoIntoPlayer(uriString)
+        viewModelScope.launch {
+            projectRepo.updateProject(updated)
+        }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        exoPlayer.release()
     }
 
     fun saveApiSettings(gemini: String, elevenLabs: String, assemblyAi: String, openAi: String) {
@@ -189,6 +234,22 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         _activeProject.value = updated
         viewModelScope.launch {
             projectRepo.updateProject(updated)
+        }
+    }
+
+    fun generateVoiceover(text: String, language: String = "my") {
+        val proj = _activeProject.value ?: return
+        val apiKey = elevenLabsApiKey.value
+        val voiceId = proj.selectedVoiceId
+        
+        viewModelScope.launch {
+            val uri = ttsRepo.generateSpeech(text, voiceId, apiKey)
+            if (uri != null) {
+                updateProjectSettings(
+                    proj.aspectRatio, proj.narrationVolume, proj.bgmVolume, proj.watermarkText,
+                    voiceId, proj.speechRate, proj.speechPitch, uri.toString()
+                )
+            }
         }
     }
 
@@ -234,7 +295,8 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     fun stopAudioRecordingAndTranscribe() {
         _isRecordingAudio.value = false
         viewModelScope.launch {
-            val generatedSubtitles = transcriptionRepo.transcribeAudioTrack(null)
+            val apiKey = assemblyAiApiKey.value
+            val generatedSubtitles = transcriptionRepo.transcribeAudioTrack(null, apiKey)
             _subtitles.value = generatedSubtitles
             _activeProject.value?.let { proj ->
                 val updated = proj.copy(subtitlesJson = serializeSubtitles(generatedSubtitles))

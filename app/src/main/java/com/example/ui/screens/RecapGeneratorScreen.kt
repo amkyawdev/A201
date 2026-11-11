@@ -94,6 +94,7 @@ fun RecapGeneratorScreen(
             selectedVideoUri = uri
             uploadedMovieName = uri.lastPathSegment ?: "Uploaded_Movie_File.mp4"
             movieTitle = uploadedMovieName.replace(".mp4", "").replace("_", " ")
+            viewModel.updateVideoUri(uri)
             Toast.makeText(context, "Movie Video Selected!", Toast.LENGTH_SHORT).show()
         }
     }
